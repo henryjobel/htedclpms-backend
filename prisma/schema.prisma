@@ -1,0 +1,921 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================
+// USER & AUTH
+// ========================
+
+model User {
+  id        String    @id @default(cuid())
+  name      String
+  email     String    @unique
+  password  String
+  phone     String?
+  role      Role      @relation(fields: [roleId], references: [id])
+  roleId    String
+  isActive  Boolean   @default(true)
+  lastLogin DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  vouchers  Voucher[]
+  tasks     Task[]
+  createdBillingRecords BillingRecord[]
+  approvalLogs ApprovalLog[]
+}
+
+model Role {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  users       User[]
+  permissions Permission[]
+  createdAt   DateTime     @default(now())
+}
+
+model Permission {
+  id     String @id @default(cuid())
+  module String
+  action String
+  role   Role   @relation(fields: [roleId], references: [id])
+  roleId String
+}
+
+// ========================
+// PROJECT MODULE
+// ========================
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  location    String
+  type        String
+  status      ProjectStatus @default(PLANNING)
+  budget      Float         @default(0)
+  startDate   DateTime
+  endDate     DateTime
+  manager     String
+  totalUnits  Int           @default(0)
+  soldUnits   Int           @default(0)
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  boqItems           BOQItem[]
+  tasks              Task[]
+  progressLogs       ProgressLog[]
+  requisitions       MaterialRequisition[]
+  projectExpenses    ProjectExpense[]
+  installments       Installment[]
+  contractorAssigns  ContractorAssignment[]
+  workerAssigns      WorkerAssignment[]
+  bills              Bill[]
+  quotations         Quotation[]
+  workOrders         WorkOrder[]
+  billingRecords     BillingRecord[]
+  assets             AssetItem[]
+  vouchers           Voucher[]
+  purchaseOrders     PurchaseOrder[]
+  ledgerEntries      LedgerEntry[]
+  rfqs               RFQ[]
+  propertyBlocks     PropertyBlock[]
+  propertyRoads      PropertyRoad[]
+  propertyUnits      PropertyUnit[]
+  propertyBookings   PropertyBooking[]
+  propertySales      PropertySale[]
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+model BOQItem {
+  id           String   @id @default(cuid())
+  project      Project  @relation(fields: [projectId], references: [id])
+  projectId    String
+  description  String
+  unit         String
+  quantity     Float
+  unitRate     Float
+  materialCost Float    @default(0)
+  laborCost    Float    @default(0)
+  totalCost    Float
+  phase        String?
+  createdAt    DateTime @default(now())
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  project     Project    @relation(fields: [projectId], references: [id])
+  projectId   String
+  title       String
+  description String?
+  assignedTo  User       @relation(fields: [userId], references: [id])
+  userId      String
+  status      TaskStatus @default(PENDING)
+  priority    Priority   @default(MEDIUM)
+  progress    Int        @default(0)
+  dueDate     DateTime
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model ProgressLog {
+  id         String   @id @default(cuid())
+  project    Project  @relation(fields: [projectId], references: [id])
+  projectId  String
+  phase      String
+  percentage Float
+  remarks    String?
+  logDate    DateTime @default(now())
+  createdAt  DateTime @default(now())
+}
+
+// ========================
+// CONTRACTOR & WORKER
+// ========================
+
+model Contractor {
+  id          String   @id @default(cuid())
+  name        String
+  specialty   String
+  phone       String?
+  email       String?
+  address     String?
+  nidNumber   String?
+  bankAccount String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments ContractorAssignment[]
+  bills       Bill[]
+  workOrders  WorkOrder[]
+  billingRecords BillingRecord[]
+}
+
+model ContractorAssignment {
+  id            String     @id @default(cuid())
+  contractor    Contractor @relation(fields: [contractorId], references: [id])
+  contractorId  String
+  project       Project    @relation(fields: [projectId], references: [id])
+  projectId     String
+  contractValue Float
+  paid          Float      @default(0)
+  startDate     DateTime
+  endDate       DateTime?
+  status        String     @default("active")
+  createdAt     DateTime   @default(now())
+}
+
+model Worker {
+  id          String   @id @default(cuid())
+  name        String
+  role        String
+  phone       String?
+  nidNumber   String?
+  dailyWage   Float
+  bankAccount String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assignments WorkerAssignment[]
+  billingRecords BillingRecord[]
+}
+
+model WorkerAssignment {
+  id         String   @id @default(cuid())
+  worker     Worker   @relation(fields: [workerId], references: [id])
+  workerId   String
+  project    Project  @relation(fields: [projectId], references: [id])
+  projectId  String
+  month      DateTime
+  daysWorked Int      @default(0)
+  totalWage  Float    @default(0)
+  paid       Float    @default(0)
+  createdAt  DateTime @default(now())
+}
+
+// ========================
+// REAL ESTATE / FLAT-LAND
+// ========================
+
+model PropertyBlock {
+  id        String   @id @default(cuid())
+  name      String
+  code      String?
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  units PropertyUnit[]
+
+  @@unique([projectId, name])
+}
+
+model PropertyRoad {
+  id        String   @id @default(cuid())
+  name      String
+  code      String?
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  units PropertyUnit[]
+
+  @@unique([projectId, name])
+}
+
+model PropertyUnit {
+  id           String            @id @default(cuid())
+  unitNo       String
+  type         PropertyUnitType
+  size         Float?
+  sizeUnit     String?
+  facing       String?
+  price        Float             @default(0)
+  status       PropertyUnitStatus @default(AVAILABLE)
+  description  String?
+  project      Project           @relation(fields: [projectId], references: [id])
+  projectId    String
+  block        PropertyBlock?    @relation(fields: [blockId], references: [id])
+  blockId      String?
+  road         PropertyRoad?     @relation(fields: [roadId], references: [id])
+  roadId       String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  bookings PropertyBooking[]
+  sales    PropertySale[]
+
+  @@unique([projectId, unitNo])
+}
+
+enum PropertyUnitType {
+  FLAT
+  LAND
+  SHOP
+  OFFICE
+}
+
+enum PropertyUnitStatus {
+  AVAILABLE
+  BOOKED
+  SOLD
+  HOLD
+}
+
+model PropertyBooking {
+  id            String               @id @default(cuid())
+  bookingNo     String               @unique
+  customerName  String
+  customerPhone String?
+  customerEmail String?
+  bookingDate   DateTime             @default(now())
+  bookingAmount Float                @default(0)
+  status        PropertyBookingStatus @default(ACTIVE)
+  remarks       String?
+  project       Project              @relation(fields: [projectId], references: [id])
+  projectId     String
+  unit          PropertyUnit         @relation(fields: [unitId], references: [id])
+  unitId        String
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  sale PropertySale?
+}
+
+enum PropertyBookingStatus {
+  ACTIVE
+  CANCELLED
+  CONVERTED
+}
+
+model PropertySale {
+  id            String           @id @default(cuid())
+  saleNo        String           @unique
+  customerName  String
+  customerPhone String?
+  customerEmail String?
+  saleDate      DateTime         @default(now())
+  saleAmount    Float
+  paidAmount    Float            @default(0)
+  dueAmount     Float            @default(0)
+  status        PropertySaleStatus @default(PARTIAL)
+  remarks       String?
+  project       Project          @relation(fields: [projectId], references: [id])
+  projectId     String
+  unit          PropertyUnit     @relation(fields: [unitId], references: [id])
+  unitId        String
+  booking       PropertyBooking? @relation(fields: [bookingId], references: [id])
+  bookingId     String?          @unique
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+enum PropertySaleStatus {
+  PAID
+  PARTIAL
+  DUE
+  CANCELLED
+}
+
+// ========================
+// INVENTORY MODULE
+// ========================
+
+model Product {
+  id            String   @id @default(cuid())
+  name          String
+  category      String
+  unit          String
+  stock         Float    @default(0)
+  minStock      Float    @default(0)
+  purchasePrice Float    @default(0)
+  description   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  supplier   Supplier? @relation(fields: [supplierId], references: [id])
+  supplierId String?
+
+  stockAdjustments  StockAdjustment[]
+  requisitionItems  RequisitionItem[]
+  purchaseItems     PurchaseOrderItem[]
+  grnItems          GRNItem[]
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  taxId     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products       Product[]
+  rfqs           RFQ[]
+  purchaseOrders PurchaseOrder[]
+  bills          Bill[]
+}
+
+model StockAdjustment {
+  id         String   @id @default(cuid())
+  product    Product  @relation(fields: [productId], references: [id])
+  productId  String
+  type       String
+  quantity   Float
+  reason     String?
+  adjustedBy String
+  createdAt  DateTime @default(now())
+}
+
+// ========================
+// PROCUREMENT MODULE
+// ========================
+
+model MaterialRequisition {
+  id           String            @id @default(cuid())
+  project      Project           @relation(fields: [projectId], references: [id])
+  projectId    String
+  requestedBy  String
+  status       RequisitionStatus @default(PENDING)
+  requiredDate DateTime
+  priority     Priority          @default(MEDIUM)
+  remarks      String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  items RequisitionItem[]
+}
+
+enum RequisitionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FULFILLED
+}
+
+model RequisitionItem {
+  id            String              @id @default(cuid())
+  requisition   MaterialRequisition @relation(fields: [requisitionId], references: [id])
+  requisitionId String
+  product       Product             @relation(fields: [productId], references: [id])
+  productId     String
+  quantity      Float
+  unit          String
+}
+
+model RFQ {
+  id         String    @id @default(cuid())
+  supplier   Supplier  @relation(fields: [supplierId], references: [id])
+  supplierId String
+  project    Project?  @relation(fields: [projectId], references: [id])
+  projectId  String?
+  status     RFQStatus @default(PENDING)
+  quotedAmount Float?
+  deliveryDays Int?
+  paymentTerms String?
+  comparisonNotes String?
+  isSelected Boolean @default(false)
+  sentDate   DateTime  @default(now())
+  deadline   DateTime?
+  remarks    String?
+  createdAt  DateTime  @default(now())
+
+  purchaseOrders PurchaseOrder[]
+}
+
+enum RFQStatus {
+  PENDING
+  SENT
+  RECEIVED
+  APPROVED
+  REJECTED
+}
+
+model PurchaseOrder {
+  id           String    @id @default(cuid())
+  poNumber     String    @unique
+  supplier     Supplier  @relation(fields: [supplierId], references: [id])
+  supplierId   String
+  project      Project?  @relation(fields: [projectId], references: [id])
+  projectId    String?
+  rfq          RFQ?      @relation(fields: [rfqId], references: [id])
+  rfqId        String?
+  status       POStatus  @default(DRAFT)
+  totalAmount  Float     @default(0)
+  deliveryDate DateTime?
+  remarks      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  items PurchaseOrderItem[]
+  grns  GRN[]
+  bills Bill[]
+}
+
+enum POStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrderItem {
+  id          String        @id @default(cuid())
+  po          PurchaseOrder @relation(fields: [poId], references: [id])
+  poId        String
+  product     Product       @relation(fields: [productId], references: [id])
+  productId   String
+  quantity    Float
+  unit        String
+  unitRate    Float
+  totalAmount Float
+}
+
+model GRN {
+  id           String        @id @default(cuid())
+  grnNumber    String        @unique
+  po           PurchaseOrder @relation(fields: [poId], references: [id])
+  poId         String
+  receivedDate DateTime      @default(now())
+  receivedBy   String
+  status       String        @default("complete")
+  remarks      String?
+  createdAt    DateTime      @default(now())
+
+  items GRNItem[]
+}
+
+model GRNItem {
+  id          String  @id @default(cuid())
+  grn         GRN     @relation(fields: [grnId], references: [id])
+  grnId       String
+  product     Product @relation(fields: [productId], references: [id])
+  productId   String
+  orderedQty  Float
+  receivedQty Float
+  damagedQty  Float   @default(0)
+  acceptedQty Float
+  unit        String
+}
+
+// ========================
+// ACCOUNTS MODULE
+// ========================
+
+model Account {
+  id          String      @id @default(cuid())
+  code        String      @unique
+  name        String
+  type        AccountType
+  parentId    String?
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+
+  ledgerEntries LedgerEntry[]
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  INCOME
+  EXPENSE
+  EQUITY
+  BANK
+  CASH
+}
+
+model Voucher {
+  id          String      @id @default(cuid())
+  voucherNo   String      @unique
+  type        VoucherType
+  project     Project?    @relation(fields: [projectId], references: [id])
+  projectId   String?
+  amount      Float
+  description String?
+  status      String      @default("pending")
+  createdBy   User        @relation(fields: [userId], references: [id])
+  userId      String
+  voucherDate DateTime    @default(now())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  ledgerEntries LedgerEntry[]
+}
+
+enum VoucherType {
+  PAYMENT
+  RECEIPT
+  JOURNAL
+  CONTRA
+  ADJUSTMENT
+}
+
+model LedgerEntry {
+  id          String   @id @default(cuid())
+  voucher     Voucher? @relation(fields: [voucherId], references: [id])
+  voucherId   String?
+  account     Account  @relation(fields: [accountId], references: [id])
+  accountId   String
+  project     Project? @relation(fields: [projectId], references: [id])
+  projectId   String?
+  debit       Float    @default(0)
+  credit      Float    @default(0)
+  description String?
+  entryDate   DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+model BankAccount {
+  id        String   @id @default(cuid())
+  name      String
+  bankName  String
+  accountNo String   @unique
+  type      String
+  balance   Float    @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions BankTransaction[]
+  reconciliations BankReconciliation[]
+  cheques         ChequeEntry[]
+}
+
+model BankTransaction {
+  id            String      @id @default(cuid())
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id])
+  bankAccountId String
+  type          String
+  amount        Float
+  description   String?
+  balance       Float
+  transDate     DateTime    @default(now())
+  createdAt     DateTime    @default(now())
+}
+
+model Installment {
+  id          String            @id @default(cuid())
+  client      String
+  clientPhone String?
+  project     Project           @relation(fields: [projectId], references: [id])
+  projectId   String
+  unit        String
+  totalAmount Float
+  paid        Float             @default(0)
+  status      InstallmentStatus @default(ACTIVE)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  schedule InstallmentSchedule[]
+}
+
+enum InstallmentStatus {
+  ACTIVE
+  OVERDUE
+  COMPLETED
+}
+
+model InstallmentSchedule {
+  id            String      @id @default(cuid())
+  installment   Installment @relation(fields: [installmentId], references: [id])
+  installmentId String
+  dueDate       DateTime
+  amount        Float
+  paidAmount    Float       @default(0)
+  paidDate      DateTime?
+  status        String      @default("unpaid")
+  createdAt     DateTime    @default(now())
+}
+
+model Bill {
+  id           String         @id @default(cuid())
+  billNumber   String         @unique
+  type         String
+  project      Project?       @relation(fields: [projectId], references: [id])
+  projectId    String?
+  supplier     Supplier?      @relation(fields: [supplierId], references: [id])
+  supplierId   String?
+  contractor   Contractor?    @relation(fields: [contractorId], references: [id])
+  contractorId String?
+  po           PurchaseOrder? @relation(fields: [poId], references: [id])
+  poId         String?
+  amount       Float
+  dueDate      DateTime?
+  status       String         @default("unpaid")
+  billDate     DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model ProjectExpense {
+  id          String   @id @default(cuid())
+  project     Project  @relation(fields: [projectId], references: [id])
+  projectId   String
+  category    String
+  description String?
+  amount      Float
+  expenseDate DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+model Quotation {
+  id          String    @id @default(cuid())
+  quotationNo String    @unique
+  project     Project?  @relation(fields: [projectId], references: [id])
+  projectId   String?
+  client      String?
+  description String?
+  amount      Float
+  validUntil  DateTime?
+  status      String    @default("draft")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  items QuotationItem[]
+}
+
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotation   Quotation @relation(fields: [quotationId], references: [id])
+  quotationId String
+  description String
+  quantity    Float
+  unit        String
+  unitRate    Float
+  totalAmount Float
+}
+
+model WorkOrder {
+  id            String      @id @default(cuid())
+  workOrderNo   String      @unique
+  title         String
+  description   String?
+  type          String
+  status        String      @default("draft")
+  amount        Float       @default(0)
+  startDate     DateTime?
+  endDate       DateTime?
+  vendorName    String?
+  project       Project?    @relation(fields: [projectId], references: [id])
+  projectId     String?
+  contractor    Contractor? @relation(fields: [contractorId], references: [id])
+  contractorId  String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  billingRecords BillingRecord[]
+}
+
+model BillingRecord {
+  id               String              @id @default(cuid())
+  billingNo        String              @unique
+  billingType      BillingType
+  title            String
+  vendorName       String?
+  customerName     String?
+  unitReference    String?
+  quantity         Float               @default(0)
+  unitRate         Float               @default(0)
+  percentage       Float?
+  previousAmount   Float               @default(0)
+  adjustmentAmount Float               @default(0)
+  retentionAmount  Float               @default(0)
+  billedAmount     Float               @default(0)
+  paidAmount       Float               @default(0)
+  dueAmount        Float               @default(0)
+  status           BillingStatus       @default(DRAFT)
+  billingDate      DateTime            @default(now())
+  dueDate          DateTime?
+  remarks          String?
+  project          Project?            @relation(fields: [projectId], references: [id])
+  projectId        String?
+  contractor       Contractor?         @relation(fields: [contractorId], references: [id])
+  contractorId     String?
+  worker           Worker?             @relation(fields: [workerId], references: [id])
+  workerId         String?
+  workOrder        WorkOrder?          @relation(fields: [workOrderId], references: [id])
+  workOrderId      String?
+  createdBy        User?               @relation(fields: [createdById], references: [id])
+  createdById      String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+}
+
+enum BillingType {
+  CONTRACTOR
+  LABOR
+  ADJUSTMENT
+  PERCENTAGE
+}
+
+enum BillingStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+model BankReconciliation {
+  id               String                @id @default(cuid())
+  bankAccount      BankAccount           @relation(fields: [bankAccountId], references: [id])
+  bankAccountId    String
+  statementDate    DateTime
+  bookBalance      Float
+  statementBalance Float
+  difference       Float
+  notes            String?
+  status           ReconciliationStatus  @default(PENDING)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+}
+
+enum ReconciliationStatus {
+  PENDING
+  MATCHED
+  ADJUSTED
+}
+
+model AssetItem {
+  id            String      @id @default(cuid())
+  assetCode     String      @unique
+  name          String
+  category      String
+  status        AssetStatus @default(ACTIVE)
+  serialNo      String?
+  purchaseDate  DateTime?
+  purchaseValue Float       @default(0)
+  currentValue  Float       @default(0)
+  location      String?
+  remarks       String?
+  project       Project?    @relation(fields: [projectId], references: [id])
+  projectId     String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  maintenanceLogs AssetMaintenanceLog[]
+}
+
+enum AssetStatus {
+  ACTIVE
+  IN_USE
+  UNDER_MAINTENANCE
+  DISPOSED
+}
+
+model ApprovalLayer {
+  id        String   @id @default(cuid())
+  module    String
+  level     Int
+  roleName  String
+  minAmount Float?
+  maxAmount Float?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ApprovalLog {
+  id         String   @id @default(cuid())
+  module     String
+  entityType String
+  entityId   String
+  action     String
+  status     String
+  remarks    String?
+  amount     Float?
+  actedBy    User?    @relation(fields: [actedById], references: [id])
+  actedById  String?
+  createdAt  DateTime @default(now())
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  valueJson Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ChequeEntry {
+  id            String       @id @default(cuid())
+  chequeNo      String       @unique
+  bankAccount   BankAccount  @relation(fields: [bankAccountId], references: [id])
+  bankAccountId String
+  type          ChequeType
+  status        ChequeStatus @default(PENDING)
+  payeeName     String
+  amount        Float
+  issueDate     DateTime     @default(now())
+  chequeDate    DateTime
+  clearedDate   DateTime?
+  remarks       String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+enum ChequeType {
+  RECEIVED
+  ISSUED
+}
+
+enum ChequeStatus {
+  PENDING
+  DEPOSITED
+  CLEARED
+  BOUNCED
+  CANCELLED
+}
+
+model AssetMaintenanceLog {
+  id              String      @id @default(cuid())
+  asset           AssetItem   @relation(fields: [assetId], references: [id])
+  assetId         String
+  maintenanceDate DateTime    @default(now())
+  description     String
+  vendorName      String?
+  cost            Float       @default(0)
+  status          String      @default("completed")
+  nextDueDate     DateTime?
+  remarks         String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
