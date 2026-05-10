@@ -40,6 +40,15 @@ if (process.env.NODE_ENV === "development") {
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+app.get("/", (_, res) => {
+  res.json({
+    status: "ok",
+    service: "HET PMS API",
+    health: "/health",
+    apiBase: "/api",
+  });
+});
+
 app.get("/health", (_, res) => {
   res.json({ status: "ok", time: new Date().toISOString(), service: "HET PMS API" });
 });
