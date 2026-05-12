@@ -26,12 +26,26 @@ const app = express();
 app.use(helmet());
 app.use(compression());
 
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://hetdclpms-frontend.vercel.app",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
+
+app.options("*", cors());
 
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
