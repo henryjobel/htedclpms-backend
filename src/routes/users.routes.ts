@@ -80,4 +80,15 @@ router.patch("/:id/status", authenticate, async (req: Request, res: Response) =>
   }
 });
 
+// DELETE /api/users/:id
+router.delete("/:id", authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.params.id as string;
+    await prisma.user.delete({ where: { id: userId } });
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 export default router;

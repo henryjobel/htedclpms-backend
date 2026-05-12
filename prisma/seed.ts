@@ -20,8 +20,9 @@ async function main() {
   const superAdminRole = roles[0];
   const adminRole = roles[1];
 
-  // Create Super Admin user
+  // Create default login users
   const hashedPassword = await bcrypt.hash("admin@123", 10);
+  const requestedAdminPassword = await bcrypt.hash("admin123", 10);
   await prisma.user.upsert({
     where: { email: "superadmin@hetpms.com" },
     update: {},
@@ -43,6 +44,23 @@ async function main() {
       password: hashedPassword,
       phone: "01711111111",
       roleId: adminRole.id,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: "admin@gmail.com" },
+    update: {
+      password: requestedAdminPassword,
+      roleId: superAdminRole.id,
+      isActive: true,
+    },
+    create: {
+      name: "Super Admin",
+      email: "admin@gmail.com",
+      password: requestedAdminPassword,
+      phone: "01722222222",
+      roleId: superAdminRole.id,
+      isActive: true,
     },
   });
 

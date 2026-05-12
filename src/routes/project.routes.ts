@@ -150,6 +150,28 @@ router.post("/:id/progress", authenticate, async (req: Request, res: Response) =
   }
 });
 
+// PUT /api/projects/boq/:itemId
+router.put("/boq/:itemId", authenticate, async (req: Request, res: Response) => {
+  try {
+    const itemId = req.params.itemId as string;
+    const item = await prisma.bOQItem.update({ where: { id: itemId }, data: req.body });
+    res.json({ success: true, data: item });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/projects/:id/progress/:logId
+router.delete("/:id/progress/:logId", authenticate, async (req: Request, res: Response) => {
+  try {
+    const logId = req.params.logId as string;
+    await prisma.progressLog.delete({ where: { id: logId } });
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // DELETE /api/projects/boq/:itemId
 router.delete("/boq/:itemId", authenticate, async (req: Request, res: Response) => {
   try {

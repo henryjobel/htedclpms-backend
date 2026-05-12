@@ -486,4 +486,24 @@ router.get("/adjustments", authenticate, async (_req: Request, res: Response) =>
   }
 });
 
+// DELETE /api/inventory/adjustments/:id
+router.delete("/adjustments/:id", authenticate, async (req: Request, res: Response) => {
+  try {
+    await prisma.stockAdjustment.delete({ where: { id: req.params.id as string } });
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/inventory/grns/:id
+router.delete("/grns/:id", authenticate, async (req: Request, res: Response) => {
+  try {
+    await prisma.gRN.delete({ where: { id: req.params.id as string } });
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 export default router;

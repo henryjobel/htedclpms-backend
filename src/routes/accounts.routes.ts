@@ -377,6 +377,16 @@ router.post("/bank-transactions", authenticate, async (req: Request, res: Respon
   }
 });
 
+// DELETE /api/accounts/bank-transactions/:id
+router.delete("/bank-transactions/:id", authenticate, async (req: Request, res: Response) => {
+  try {
+    await prisma.bankTransaction.delete({ where: { id: req.params.id as string } });
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // GET /api/accounts/cash-book
 router.get("/cash-book", authenticate, async (req: Request, res: Response) => {
   try {

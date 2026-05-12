@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
@@ -12,7 +12,7 @@ datasource db {
 // ========================
 
 model User {
-  id        String    @id @default(cuid())
+  id        String    @id @default(cuid()) @map("_id")
   name      String
   email     String    @unique
   password  String
@@ -31,7 +31,7 @@ model User {
 }
 
 model Role {
-  id          String       @id @default(cuid())
+  id          String       @id @default(cuid()) @map("_id")
   name        String       @unique
   description String?
   users       User[]
@@ -40,7 +40,7 @@ model Role {
 }
 
 model Permission {
-  id     String @id @default(cuid())
+  id     String @id @default(cuid()) @map("_id")
   module String
   action String
   role   Role   @relation(fields: [roleId], references: [id])
@@ -52,7 +52,7 @@ model Permission {
 // ========================
 
 model Project {
-  id          String        @id @default(cuid())
+  id          String        @id @default(cuid()) @map("_id")
   name        String
   location    String
   type        String
@@ -100,7 +100,7 @@ enum ProjectStatus {
 }
 
 model BOQItem {
-  id           String   @id @default(cuid())
+  id           String   @id @default(cuid()) @map("_id")
   project      Project  @relation(fields: [projectId], references: [id])
   projectId    String
   description  String
@@ -115,7 +115,7 @@ model BOQItem {
 }
 
 model Task {
-  id          String     @id @default(cuid())
+  id          String     @id @default(cuid()) @map("_id")
   project     Project    @relation(fields: [projectId], references: [id])
   projectId   String
   title       String
@@ -145,7 +145,7 @@ enum Priority {
 }
 
 model ProgressLog {
-  id         String   @id @default(cuid())
+  id         String   @id @default(cuid()) @map("_id")
   project    Project  @relation(fields: [projectId], references: [id])
   projectId  String
   phase      String
@@ -160,7 +160,7 @@ model ProgressLog {
 // ========================
 
 model Contractor {
-  id          String   @id @default(cuid())
+  id          String   @id @default(cuid()) @map("_id")
   name        String
   specialty   String
   phone       String?
@@ -179,7 +179,7 @@ model Contractor {
 }
 
 model ContractorAssignment {
-  id            String     @id @default(cuid())
+  id            String     @id @default(cuid()) @map("_id")
   contractor    Contractor @relation(fields: [contractorId], references: [id])
   contractorId  String
   project       Project    @relation(fields: [projectId], references: [id])
@@ -193,7 +193,7 @@ model ContractorAssignment {
 }
 
 model Worker {
-  id          String   @id @default(cuid())
+  id          String   @id @default(cuid()) @map("_id")
   name        String
   role        String
   phone       String?
@@ -209,7 +209,7 @@ model Worker {
 }
 
 model WorkerAssignment {
-  id         String   @id @default(cuid())
+  id         String   @id @default(cuid()) @map("_id")
   worker     Worker   @relation(fields: [workerId], references: [id])
   workerId   String
   project    Project  @relation(fields: [projectId], references: [id])
@@ -226,7 +226,7 @@ model WorkerAssignment {
 // ========================
 
 model PropertyBlock {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   name      String
   code      String?
   project   Project  @relation(fields: [projectId], references: [id])
@@ -240,7 +240,7 @@ model PropertyBlock {
 }
 
 model PropertyRoad {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   name      String
   code      String?
   project   Project  @relation(fields: [projectId], references: [id])
@@ -254,7 +254,7 @@ model PropertyRoad {
 }
 
 model PropertyUnit {
-  id           String            @id @default(cuid())
+  id           String            @id @default(cuid()) @map("_id")
   unitNo       String
   type         PropertyUnitType
   size         Float?
@@ -293,7 +293,7 @@ enum PropertyUnitStatus {
 }
 
 model PropertyBooking {
-  id            String               @id @default(cuid())
+  id            String               @id @default(cuid()) @map("_id")
   bookingNo     String               @unique
   customerName  String
   customerPhone String?
@@ -319,7 +319,7 @@ enum PropertyBookingStatus {
 }
 
 model PropertySale {
-  id            String           @id @default(cuid())
+  id            String           @id @default(cuid()) @map("_id")
   saleNo        String           @unique
   customerName  String
   customerPhone String?
@@ -352,7 +352,7 @@ enum PropertySaleStatus {
 // ========================
 
 model Product {
-  id            String   @id @default(cuid())
+  id            String   @id @default(cuid()) @map("_id")
   name          String
   category      String
   unit          String
@@ -374,7 +374,7 @@ model Product {
 }
 
 model Supplier {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   name      String
   contact   String?
   phone     String?
@@ -392,7 +392,7 @@ model Supplier {
 }
 
 model StockAdjustment {
-  id         String   @id @default(cuid())
+  id         String   @id @default(cuid()) @map("_id")
   product    Product  @relation(fields: [productId], references: [id])
   productId  String
   type       String
@@ -407,7 +407,7 @@ model StockAdjustment {
 // ========================
 
 model MaterialRequisition {
-  id           String            @id @default(cuid())
+  id           String            @id @default(cuid()) @map("_id")
   project      Project           @relation(fields: [projectId], references: [id])
   projectId    String
   requestedBy  String
@@ -429,7 +429,7 @@ enum RequisitionStatus {
 }
 
 model RequisitionItem {
-  id            String              @id @default(cuid())
+  id            String              @id @default(cuid()) @map("_id")
   requisition   MaterialRequisition @relation(fields: [requisitionId], references: [id])
   requisitionId String
   product       Product             @relation(fields: [productId], references: [id])
@@ -439,7 +439,7 @@ model RequisitionItem {
 }
 
 model RFQ {
-  id         String    @id @default(cuid())
+  id         String    @id @default(cuid()) @map("_id")
   supplier   Supplier  @relation(fields: [supplierId], references: [id])
   supplierId String
   project    Project?  @relation(fields: [projectId], references: [id])
@@ -467,7 +467,7 @@ enum RFQStatus {
 }
 
 model PurchaseOrder {
-  id           String    @id @default(cuid())
+  id           String    @id @default(cuid()) @map("_id")
   poNumber     String    @unique
   supplier     Supplier  @relation(fields: [supplierId], references: [id])
   supplierId   String
@@ -496,7 +496,7 @@ enum POStatus {
 }
 
 model PurchaseOrderItem {
-  id          String        @id @default(cuid())
+  id          String        @id @default(cuid()) @map("_id")
   po          PurchaseOrder @relation(fields: [poId], references: [id])
   poId        String
   product     Product       @relation(fields: [productId], references: [id])
@@ -508,7 +508,7 @@ model PurchaseOrderItem {
 }
 
 model GRN {
-  id           String        @id @default(cuid())
+  id           String        @id @default(cuid()) @map("_id")
   grnNumber    String        @unique
   po           PurchaseOrder @relation(fields: [poId], references: [id])
   poId         String
@@ -522,7 +522,7 @@ model GRN {
 }
 
 model GRNItem {
-  id          String  @id @default(cuid())
+  id          String  @id @default(cuid()) @map("_id")
   grn         GRN     @relation(fields: [grnId], references: [id])
   grnId       String
   product     Product @relation(fields: [productId], references: [id])
@@ -539,7 +539,7 @@ model GRNItem {
 // ========================
 
 model Account {
-  id          String      @id @default(cuid())
+  id          String      @id @default(cuid()) @map("_id")
   code        String      @unique
   name        String
   type        AccountType
@@ -562,7 +562,7 @@ enum AccountType {
 }
 
 model Voucher {
-  id          String      @id @default(cuid())
+  id          String      @id @default(cuid()) @map("_id")
   voucherNo   String      @unique
   type        VoucherType
   project     Project?    @relation(fields: [projectId], references: [id])
@@ -588,7 +588,7 @@ enum VoucherType {
 }
 
 model LedgerEntry {
-  id          String   @id @default(cuid())
+  id          String   @id @default(cuid()) @map("_id")
   voucher     Voucher? @relation(fields: [voucherId], references: [id])
   voucherId   String?
   account     Account  @relation(fields: [accountId], references: [id])
@@ -603,7 +603,7 @@ model LedgerEntry {
 }
 
 model BankAccount {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   name      String
   bankName  String
   accountNo String   @unique
@@ -619,7 +619,7 @@ model BankAccount {
 }
 
 model BankTransaction {
-  id            String      @id @default(cuid())
+  id            String      @id @default(cuid()) @map("_id")
   bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id])
   bankAccountId String
   type          String
@@ -631,7 +631,7 @@ model BankTransaction {
 }
 
 model Installment {
-  id          String            @id @default(cuid())
+  id          String            @id @default(cuid()) @map("_id")
   client      String
   clientPhone String?
   project     Project           @relation(fields: [projectId], references: [id])
@@ -653,7 +653,7 @@ enum InstallmentStatus {
 }
 
 model InstallmentSchedule {
-  id            String      @id @default(cuid())
+  id            String      @id @default(cuid()) @map("_id")
   installment   Installment @relation(fields: [installmentId], references: [id])
   installmentId String
   dueDate       DateTime
@@ -665,7 +665,7 @@ model InstallmentSchedule {
 }
 
 model Bill {
-  id           String         @id @default(cuid())
+  id           String         @id @default(cuid()) @map("_id")
   billNumber   String         @unique
   type         String
   project      Project?       @relation(fields: [projectId], references: [id])
@@ -685,7 +685,7 @@ model Bill {
 }
 
 model ProjectExpense {
-  id          String   @id @default(cuid())
+  id          String   @id @default(cuid()) @map("_id")
   project     Project  @relation(fields: [projectId], references: [id])
   projectId   String
   category    String
@@ -696,7 +696,7 @@ model ProjectExpense {
 }
 
 model Quotation {
-  id          String    @id @default(cuid())
+  id          String    @id @default(cuid()) @map("_id")
   quotationNo String    @unique
   project     Project?  @relation(fields: [projectId], references: [id])
   projectId   String?
@@ -712,7 +712,7 @@ model Quotation {
 }
 
 model QuotationItem {
-  id          String    @id @default(cuid())
+  id          String    @id @default(cuid()) @map("_id")
   quotation   Quotation @relation(fields: [quotationId], references: [id])
   quotationId String
   description String
@@ -723,7 +723,7 @@ model QuotationItem {
 }
 
 model WorkOrder {
-  id            String      @id @default(cuid())
+  id            String      @id @default(cuid()) @map("_id")
   workOrderNo   String      @unique
   title         String
   description   String?
@@ -744,7 +744,7 @@ model WorkOrder {
 }
 
 model BillingRecord {
-  id               String              @id @default(cuid())
+  id               String              @id @default(cuid()) @map("_id")
   billingNo        String              @unique
   billingType      BillingType
   title            String
@@ -795,7 +795,7 @@ enum BillingStatus {
 }
 
 model BankReconciliation {
-  id               String                @id @default(cuid())
+  id               String                @id @default(cuid()) @map("_id")
   bankAccount      BankAccount           @relation(fields: [bankAccountId], references: [id])
   bankAccountId    String
   statementDate    DateTime
@@ -815,7 +815,7 @@ enum ReconciliationStatus {
 }
 
 model AssetItem {
-  id            String      @id @default(cuid())
+  id            String      @id @default(cuid()) @map("_id")
   assetCode     String      @unique
   name          String
   category      String
@@ -842,7 +842,7 @@ enum AssetStatus {
 }
 
 model ApprovalLayer {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   module    String
   level     Int
   roleName  String
@@ -854,7 +854,7 @@ model ApprovalLayer {
 }
 
 model ApprovalLog {
-  id         String   @id @default(cuid())
+  id         String   @id @default(cuid()) @map("_id")
   module     String
   entityType String
   entityId   String
@@ -868,7 +868,7 @@ model ApprovalLog {
 }
 
 model SystemSetting {
-  id        String   @id @default(cuid())
+  id        String   @id @default(cuid()) @map("_id")
   key       String   @unique
   valueJson Json
   createdAt DateTime @default(now())
@@ -876,7 +876,7 @@ model SystemSetting {
 }
 
 model ChequeEntry {
-  id            String       @id @default(cuid())
+  id            String       @id @default(cuid()) @map("_id")
   chequeNo      String       @unique
   bankAccount   BankAccount  @relation(fields: [bankAccountId], references: [id])
   bankAccountId String
@@ -906,7 +906,7 @@ enum ChequeStatus {
 }
 
 model AssetMaintenanceLog {
-  id              String      @id @default(cuid())
+  id              String      @id @default(cuid()) @map("_id")
   asset           AssetItem   @relation(fields: [assetId], references: [id])
   assetId         String
   maintenanceDate DateTime    @default(now())
