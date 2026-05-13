@@ -90,6 +90,12 @@ model Project {
   propertyUnits      PropertyUnit[]
   propertyBookings   PropertyBooking[]
   propertySales      PropertySale[]
+  investments        ProjectInvestment[]
+  shareAssigns       ShareAssignment[]
+  shareConfigs       ShareProjectConfig[]
+  documents          ProjectDocument[]
+  sites              ProjectSite[]
+  ganttTasks         GanttTask[]
 }
 
 enum ProjectStatus {
@@ -919,4 +925,121 @@ model AssetMaintenanceLog {
   remarks         String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+}
+
+// ========================
+// INVESTMENT MODULE
+// ========================
+
+model Investor {
+  id           String              @id @default(cuid()) @map("_id")
+  name         String
+  phone        String?
+  email        String?
+  address      String?
+  nidNumber    String?
+  investorType String              @default("Individual")
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  investments  ProjectInvestment[]
+  shareAssigns ShareAssignment[]
+}
+
+model ProjectInvestment {
+  id         String   @id @default(cuid()) @map("_id")
+  investor   Investor @relation(fields: [investorId], references: [id])
+  investorId String
+  project    Project  @relation(fields: [projectId], references: [id])
+  projectId  String
+  amount     Float    @default(0)
+  percentage Float    @default(0)
+  investDate DateTime @default(now())
+  status     String   @default("active")
+  remarks    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ========================
+// SHARE PROJECT MODULE
+// ========================
+
+model ShareAssignment {
+  id         String   @id @default(cuid()) @map("_id")
+  investor   Investor @relation(fields: [investorId], references: [id])
+  investorId String
+  project    Project  @relation(fields: [projectId], references: [id])
+  projectId  String
+  shareCount Int      @default(0)
+  shareValue Float    @default(0)
+  assignDate DateTime @default(now())
+  status     String   @default("active")
+  remarks    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ShareProjectConfig {
+  id          String   @id @default(cuid()) @map("_id")
+  project     Project? @relation(fields: [projectId], references: [id])
+  projectId   String?
+  configName  String
+  totalShares Int      @default(0)
+  shareValue  Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ========================
+// DOCUMENTS & SITES
+// ========================
+
+model ProjectDocument {
+  id           String   @id @default(cuid()) @map("_id")
+  project      Project? @relation(fields: [projectId], references: [id])
+  projectId    String?
+  title        String
+  documentType String   @default("General")
+  fileUrl      String?
+  description  String?
+  uploadedBy   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ProjectSite {
+  id          String   @id @default(cuid()) @map("_id")
+  project     Project? @relation(fields: [projectId], references: [id])
+  projectId   String?
+  name        String
+  address     String?
+  area        Float?
+  areaUnit    String?
+  siteType    String   @default("Construction")
+  status      String   @default("Active")
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ========================
+// GANTT CHART
+// ========================
+
+model GanttTask {
+  id           String   @id @default(cuid()) @map("_id")
+  project      Project? @relation(fields: [projectId], references: [id])
+  projectId    String?
+  taskName     String
+  phase        String?
+  startDate    DateTime
+  endDate      DateTime
+  progress     Float    @default(0)
+  assignee     String?
+  color        String?
+  dependencies String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

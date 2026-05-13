@@ -19,6 +19,11 @@ import settingsRoutes from "./routes/settings.routes";
 import reportsRoutes from "./routes/reports.routes";
 import adminRoutes from "./routes/admin.routes";
 import mastersRoutes from "./routes/masters.routes";
+import investmentRoutes from "./routes/investment.routes";
+import shareProjectRoutes from "./routes/share-project.routes";
+import documentsRoutes from "./routes/documents.routes";
+import sitesRoutes from "./routes/sites.routes";
+import ganttRoutes from "./routes/gantt.routes";
 import { errorHandler, notFound } from "./middleware/error-handler";
 
 const app = express();
@@ -81,6 +86,11 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/masters", mastersRoutes);
+app.use("/api/investment", investmentRoutes);
+app.use("/api/share-project", shareProjectRoutes);
+app.use("/api/documents", documentsRoutes);
+app.use("/api/sites", sitesRoutes);
+app.use("/api/gantt", ganttRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
