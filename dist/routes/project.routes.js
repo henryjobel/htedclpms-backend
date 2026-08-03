@@ -4,6 +4,27 @@ const express_1 = require("express");
 const prisma_1 = require("../lib/prisma");
 const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
+function normalizeBOQData(body, existing) {
+    const quantity = body.quantity !== undefined ? Number(body.quantity || 0) : existing?.quantity ?? 0;
+    const unitRate = body.unitRate !== undefined ? Number(body.unitRate || 0) : existing?.unitRate ?? 0;
+    const materialCost = body.materialCost !== undefined ? Number(body.materialCost || 0) : existing?.materialCost ?? 0;
+    const laborCost = body.laborCost !== undefined ? Number(body.laborCost || 0) : existing?.laborCost ?? 0;
+    return {
+        ...body,
+        quantity,
+        unitRate,
+        materialCost,
+        laborCost,
+        totalCost: quantity * unitRate + materialCost + laborCost,
+    };
+}
+function normalizeQuotationItems(items = []) {
+    return items.map((item) => {
+        const quantity = Number(item.quantity || 0);
+        const unitRate = Number(item.unitRate || 0);
+        return { ...item, quantity, unitRate, totalAmount: quantity * unitRate };
+    });
+}
 // GET /api/projects
 router.get("/", auth_1.authenticate, async (req, res) => {
     try {
@@ -77,11 +98,64 @@ router.put("/:id", auth_1.authenticate, async (req, res) => {
 router.delete("/:id", auth_1.authenticate, async (req, res) => {
     try {
         const projectId = req.params.id;
-        await prisma_1.prisma.project.delete({ where: { id: projectId } });
+        await prisma_1.prisma.$transaction(async (tx) => {
+            const [vouchers, purchaseOrders, grns, assets, installments, quotations] = await Promise.all([
+                tx.voucher.findMany({ where: { projectId }, select: { id: true } }),
+                tx.purchaseOrder.findMany({ where: { projectId }, select: { id: true } }),
+                tx.gRN.findMany({ where: { po: { projectId } }, select: { id: true } }),
+                tx.assetItem.findMany({ where: { projectId }, select: { id: true } }),
+                tx.installment.findMany({ where: { projectId }, select: { id: true } }),
+                tx.quotation.findMany({ where: { projectId }, select: { id: true } }),
+            ]);
+            const voucherIds = vouchers.map((item) => item.id);
+            const purchaseOrderIds = purchaseOrders.map((item) => item.id);
+            const grnIds = grns.map((item) => item.id);
+            const assetIds = assets.map((item) => item.id);
+            const installmentIds = installments.map((item) => item.id);
+            const quotationIds = quotations.map((item) => item.id);
+            await tx.ledgerEntry.deleteMany({
+                where: { OR: [{ projectId }, { voucherId: { in: voucherIds } }] },
+            });
+            await tx.voucher.deleteMany({ where: { id: { in: voucherIds } } });
+            await tx.installmentSchedule.deleteMany({ where: { installmentId: { in: installmentIds } } });
+            await tx.installment.deleteMany({ where: { projectId } });
+            await tx.requisitionItem.deleteMany({ where: { requisition: { projectId } } });
+            await tx.materialRequisition.deleteMany({ where: { projectId } });
+            await tx.gRNItem.deleteMany({ where: { grnId: { in: grnIds } } });
+            await tx.gRN.deleteMany({ where: { id: { in: grnIds } } });
+            await tx.bill.deleteMany({ where: { OR: [{ projectId }, { poId: { in: purchaseOrderIds } }] } });
+            await tx.purchaseOrderItem.deleteMany({ where: { poId: { in: purchaseOrderIds } } });
+            await tx.purchaseOrder.deleteMany({ where: { projectId } });
+            await tx.rFQ.deleteMany({ where: { projectId } });
+            await tx.billingRecord.deleteMany({ where: { projectId } });
+            await tx.workOrder.deleteMany({ where: { projectId } });
+            await tx.quotationItem.deleteMany({ where: { quotationId: { in: quotationIds } } });
+            await tx.quotation.deleteMany({ where: { projectId } });
+            await tx.assetMaintenanceLog.deleteMany({ where: { assetId: { in: assetIds } } });
+            await tx.assetItem.deleteMany({ where: { projectId } });
+            await tx.propertySale.deleteMany({ where: { projectId } });
+            await tx.propertyBooking.deleteMany({ where: { projectId } });
+            await tx.propertyUnit.deleteMany({ where: { projectId } });
+            await tx.propertyBlock.deleteMany({ where: { projectId } });
+            await tx.propertyRoad.deleteMany({ where: { projectId } });
+            await tx.bOQItem.deleteMany({ where: { projectId } });
+            await tx.task.deleteMany({ where: { projectId } });
+            await tx.progressLog.deleteMany({ where: { projectId } });
+            await tx.ganttTask.deleteMany({ where: { projectId } });
+            await tx.contractorAssignment.deleteMany({ where: { projectId } });
+            await tx.workerAssignment.deleteMany({ where: { projectId } });
+            await tx.projectExpense.deleteMany({ where: { projectId } });
+            await tx.projectInvestment.deleteMany({ where: { projectId } });
+            await tx.shareAssignment.deleteMany({ where: { projectId } });
+            await tx.shareProjectConfig.deleteMany({ where: { projectId } });
+            await tx.projectDocument.deleteMany({ where: { projectId } });
+            await tx.projectSite.deleteMany({ where: { projectId } });
+            await tx.project.delete({ where: { id: projectId } });
+        });
         res.json({ success: true, message: "Project deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // GET /api/projects/:id/boq
@@ -99,7 +173,9 @@ router.get("/:id/boq", auth_1.authenticate, async (req, res) => {
 router.post("/:id/boq", auth_1.authenticate, async (req, res) => {
     try {
         const projectId = req.params.id;
-        const item = await prisma_1.prisma.bOQItem.create({ data: { ...req.body, projectId } });
+        const item = await prisma_1.prisma.bOQItem.create({
+            data: { ...normalizeBOQData(req.body), projectId },
+        });
         res.status(201).json({ success: true, data: item });
     }
     catch {
@@ -140,6 +216,31 @@ router.post("/:id/progress", auth_1.authenticate, async (req, res) => {
         const projectId = req.params.id;
         const log = await prisma_1.prisma.progressLog.create({ data: { ...req.body, projectId } });
         res.status(201).json({ success: true, data: log });
+    }
+    catch {
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// PUT /api/projects/boq/:itemId
+router.put("/boq/:itemId", auth_1.authenticate, async (req, res) => {
+    try {
+        const itemId = req.params.itemId;
+        const existing = await prisma_1.prisma.bOQItem.findUnique({ where: { id: itemId } });
+        if (!existing)
+            return res.status(404).json({ error: "BOQ item not found" });
+        const item = await prisma_1.prisma.bOQItem.update({ where: { id: itemId }, data: normalizeBOQData(req.body, existing) });
+        res.json({ success: true, data: item });
+    }
+    catch {
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// DELETE /api/projects/:id/progress/:logId
+router.delete("/:id/progress/:logId", auth_1.authenticate, async (req, res) => {
+    try {
+        const logId = req.params.logId;
+        await prisma_1.prisma.progressLog.delete({ where: { id: logId } });
+        res.json({ success: true });
     }
     catch {
         res.status(500).json({ error: "Server error" });
@@ -204,11 +305,14 @@ router.put("/quotations/:id", auth_1.authenticate, async (req, res) => {
 router.delete("/quotations/:id", auth_1.authenticate, async (req, res) => {
     try {
         const quotationId = req.params.id;
-        await prisma_1.prisma.quotation.delete({ where: { id: quotationId } });
+        await prisma_1.prisma.$transaction([
+            prisma_1.prisma.quotationItem.deleteMany({ where: { quotationId } }),
+            prisma_1.prisma.quotation.delete({ where: { id: quotationId } }),
+        ]);
         res.json({ success: true, message: "Quotation deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // GET /api/projects/quotations
@@ -230,7 +334,7 @@ router.post("/quotations", auth_1.authenticate, async (_req, res) => {
         const quotationNo = `QT-${Date.now()}`;
         const { items, ...rest } = _req.body;
         const quotation = await prisma_1.prisma.quotation.create({
-            data: { ...rest, quotationNo, items: items ? { create: items } : undefined },
+            data: { ...rest, quotationNo, items: items ? { create: normalizeQuotationItems(items) } : undefined },
             include: { items: true },
         });
         res.status(201).json({ success: true, data: quotation });
@@ -295,11 +399,15 @@ router.put("/work-orders/:id", auth_1.authenticate, async (req, res) => {
 // DELETE /api/projects/work-orders/:id
 router.delete("/work-orders/:id", auth_1.authenticate, async (req, res) => {
     try {
-        await prisma_1.prisma.workOrder.delete({ where: { id: req.params.id } });
+        const workOrderId = req.params.id;
+        await prisma_1.prisma.$transaction([
+            prisma_1.prisma.billingRecord.updateMany({ where: { workOrderId }, data: { workOrderId: null } }),
+            prisma_1.prisma.workOrder.delete({ where: { id: workOrderId } }),
+        ]);
         res.json({ success: true, message: "Work order deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 exports.default = router;

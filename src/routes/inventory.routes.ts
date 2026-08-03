@@ -81,15 +81,18 @@ router.post("/products/:id/adjustment", authenticate, async (req: Request, res: 
   try {
     const { type, quantity, reason, adjustedBy } = req.body;
     const productId = req.params.id as string;
+    const adjustmentQty = Number(quantity || 0);
+    if (adjustmentQty <= 0) return res.status(400).json({ error: "Quantity must be greater than zero" });
+
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) return res.status(404).json({ error: "Product not found" });
 
-    const newStock = type === "add" ? product.stock + quantity : product.stock - quantity;
+    const newStock = type === "add" ? product.stock + adjustmentQty : product.stock - adjustmentQty;
     if (newStock < 0) return res.status(400).json({ error: "Insufficient stock" });
 
-    await Promise.all([
+    await prisma.$transaction([
       prisma.product.update({ where: { id: productId }, data: { stock: newStock } }),
-      prisma.stockAdjustment.create({ data: { productId, type, quantity, reason, adjustedBy } }),
+      prisma.stockAdjustment.create({ data: { productId, type, quantity: adjustmentQty, reason, adjustedBy } }),
     ]);
 
     res.json({ success: true, message: "Stock adjusted", newStock });
@@ -217,10 +220,13 @@ router.patch("/requisitions/:id/status", authenticate, async (req: AuthRequest, 
 router.delete("/requisitions/:id", authenticate, async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    await prisma.materialRequisition.delete({ where: { id } });
+    await prisma.$transaction([
+      prisma.requisitionItem.deleteMany({ where: { requisitionId: id } }),
+      prisma.materialRequisition.delete({ where: { id } }),
+    ]);
     res.json({ success: true, message: "Requisition deleted" });
-  } catch {
-    res.status(500).json({ error: "Server error" });
+  } catch (err: unknown) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 
@@ -325,10 +331,13 @@ router.patch("/rfqs/:id/select", authenticate, async (req: Request, res: Respons
 router.delete("/rfqs/:id", authenticate, async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    await prisma.rFQ.delete({ where: { id } });
+    await prisma.$transaction([
+      prisma.purchaseOrder.updateMany({ where: { rfqId: id }, data: { rfqId: null } }),
+      prisma.rFQ.delete({ where: { id } }),
+    ]);
     res.json({ success: true, message: "RFQ deleted" });
-  } catch {
-    res.status(500).json({ error: "Server error" });
+  } catch (err: unknown) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 
@@ -353,7 +362,12 @@ router.get("/purchase-orders", authenticate, async (_req: Request, res: Response
 router.post("/purchase-orders", authenticate, async (req: Request, res: Response) => {
   try {
     const { supplierId, projectId, rfqId, items, deliveryDate, remarks } = req.body;
-    const totalAmount = items.reduce((a: number, i: { totalAmount: number }) => a + i.totalAmount, 0);
+    const normalizedItems = (items ?? []).map((item: { quantity: number; unitRate: number }) => {
+      const quantity = Number(item.quantity || 0);
+      const unitRate = Number(item.unitRate || 0);
+      return { ...item, quantity, unitRate, totalAmount: quantity * unitRate };
+    });
+    const totalAmount = normalizedItems.reduce((a: number, i: { totalAmount: number }) => a + i.totalAmount, 0);
     const poNumber = `PO-${Date.now()}`;
 
     const po = await prisma.purchaseOrder.create({
@@ -366,7 +380,7 @@ router.post("/purchase-orders", authenticate, async (req: Request, res: Response
         totalAmount,
         deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
         remarks,
-        items: { create: items },
+        items: { create: normalizedItems },
       },
       include: { items: true },
     });
@@ -417,10 +431,28 @@ router.patch("/purchase-orders/:id/status", authenticate, async (req: AuthReques
 router.delete("/purchase-orders/:id", authenticate, async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    await prisma.purchaseOrder.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      const grns = await tx.gRN.findMany({ where: { poId: id }, include: { items: true } });
+      for (const grn of grns) {
+        for (const item of grn.items) {
+          const product = await tx.product.findUnique({ where: { id: item.productId } });
+          if (product && product.stock >= item.acceptedQty) {
+            await tx.product.update({
+              where: { id: item.productId },
+              data: { stock: { decrement: item.acceptedQty } },
+            });
+          }
+        }
+        await tx.gRNItem.deleteMany({ where: { grnId: grn.id } });
+      }
+      await tx.gRN.deleteMany({ where: { poId: id } });
+      await tx.bill.deleteMany({ where: { poId: id } });
+      await tx.purchaseOrderItem.deleteMany({ where: { poId: id } });
+      await tx.purchaseOrder.delete({ where: { id } });
+    });
     res.json({ success: true, message: "Purchase order deleted" });
-  } catch {
-    res.status(500).json({ error: "Server error" });
+  } catch (err: unknown) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 
@@ -446,25 +478,27 @@ router.post("/grns", authenticate, async (req: Request, res: Response) => {
     const { poId, receivedBy, items, remarks } = req.body;
     const grnNumber = `GRN-${Date.now()}`;
 
-    const grn = await prisma.gRN.create({
-      data: {
-        grnNumber,
-        poId,
-        receivedBy,
-        remarks,
-        items: { create: items },
-      },
-    });
-
-    // Update stock for each received product
-    for (const item of items) {
-      await prisma.product.update({
-        where: { id: item.productId },
-        data: { stock: { increment: item.acceptedQty } },
+    const grn = await prisma.$transaction(async (tx) => {
+      const created = await tx.gRN.create({
+        data: {
+          grnNumber,
+          poId,
+          receivedBy,
+          remarks,
+          items: { create: items },
+        },
       });
-    }
 
-    await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: "RECEIVED" } });
+      for (const item of items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stock: { increment: Number(item.acceptedQty || 0) } },
+        });
+      }
+
+      await tx.purchaseOrder.update({ where: { id: poId }, data: { status: "RECEIVED" } });
+      return created;
+    });
 
     res.status(201).json({ success: true, data: grn });
   } catch {
@@ -499,10 +533,30 @@ router.delete("/adjustments/:id", authenticate, async (req: Request, res: Respon
 // DELETE /api/inventory/grns/:id
 router.delete("/grns/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    await prisma.gRN.delete({ where: { id: req.params.id as string } });
+    await prisma.$transaction(async (tx) => {
+      const grn = await tx.gRN.findUnique({
+        where: { id: req.params.id as string },
+        include: { items: true },
+      });
+      if (!grn) throw new Error("GRN not found");
+
+      for (const item of grn.items) {
+        const product = await tx.product.findUnique({ where: { id: item.productId } });
+        if (!product || product.stock < item.acceptedQty) {
+          throw new Error(`Cannot reverse GRN because stock is lower than accepted quantity`);
+        }
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stock: { decrement: item.acceptedQty } },
+        });
+      }
+
+      await tx.gRNItem.deleteMany({ where: { grnId: grn.id } });
+      await tx.gRN.delete({ where: { id: grn.id } });
+    });
     res.json({ success: true });
-  } catch {
-    res.status(500).json({ error: "Server error" });
+  } catch (err: unknown) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 

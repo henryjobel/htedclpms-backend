@@ -197,10 +197,14 @@ router.put("/blocks/:id", authenticate, async (req: Request, res: Response) => {
 
 router.delete("/blocks/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    await prisma.propertyBlock.delete({ where: { id: req.params.id as string } });
+    const blockId = req.params.id as string;
+    await prisma.$transaction([
+      prisma.propertyUnit.updateMany({ where: { blockId }, data: { blockId: null } }),
+      prisma.propertyBlock.delete({ where: { id: blockId } }),
+    ]);
     res.json({ success: true, message: "Block deleted" });
-  } catch {
-    res.status(500).json({ error: "Server error" });
+  } catch (err: unknown) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 
@@ -240,10 +244,14 @@ router.put("/roads/:id", authenticate, async (req: Request, res: Response) => {
 
 router.delete("/roads/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    await prisma.propertyRoad.delete({ where: { id: req.params.id as string } });
+    const roadId = req.params.id as string;
+    await prisma.$transaction([
+      prisma.propertyUnit.updateMany({ where: { roadId }, data: { roadId: null } }),
+      prisma.propertyRoad.delete({ where: { id: roadId } }),
+    ]);
     res.json({ success: true, message: "Road deleted" });
-  } catch {
-    res.status(500).json({ error: "Server error" });
+  } catch (err: unknown) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 
@@ -294,10 +302,15 @@ router.put("/units/:id", authenticate, async (req: Request, res: Response) => {
 
 router.delete("/units/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    await prisma.propertyUnit.delete({ where: { id: req.params.id as string } });
+    const unitId = req.params.id as string;
+    await prisma.$transaction([
+      prisma.propertySale.deleteMany({ where: { unitId } }),
+      prisma.propertyBooking.deleteMany({ where: { unitId } }),
+      prisma.propertyUnit.delete({ where: { id: unitId } }),
+    ]);
     res.json({ success: true, message: "Unit deleted" });
-  } catch {
-    res.status(500).json({ error: "Server error" });
+  } catch (err: unknown) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 
@@ -374,17 +387,24 @@ router.put("/bookings/:id", authenticate, async (req: Request, res: Response) =>
 
 router.delete("/bookings/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    const booking = await prisma.propertyBooking.findUnique({ where: { id: req.params.id as string } });
+    const bookingId = req.params.id as string;
+    const booking = await prisma.propertyBooking.findUnique({ where: { id: bookingId } });
     if (!booking) return res.status(404).json({ error: "Booking not found" });
 
-    await prisma.propertyBooking.delete({ where: { id: req.params.id as string } });
-    await prisma.propertyUnit.update({
-      where: { id: booking.unitId },
-      data: { status: "AVAILABLE" },
+    const linkedSale = await prisma.propertySale.findUnique({ where: { bookingId } });
+    await prisma.$transaction(async (tx) => {
+      if (linkedSale) {
+        await tx.propertySale.update({ where: { id: linkedSale.id }, data: { bookingId: null } });
+      }
+      await tx.propertyBooking.delete({ where: { id: bookingId } });
+      await tx.propertyUnit.update({
+        where: { id: booking.unitId },
+        data: { status: linkedSale ? "SOLD" : "AVAILABLE" },
+      });
     });
     res.json({ success: true, message: "Booking deleted" });
-  } catch {
-    res.status(500).json({ error: "Server error" });
+  } catch (err: unknown) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 
@@ -443,6 +463,9 @@ router.post("/sales", authenticate, async (req: Request, res: Response) => {
     const saleNo = `SAL-${Date.now()}`;
     const saleAmount = Number(req.body.saleAmount || 0);
     const paidAmount = Number(req.body.paidAmount || 0);
+    if (paidAmount > saleAmount) {
+      return res.status(400).json({ error: "Paid amount cannot exceed sale amount" });
+    }
 
     const sale = await prisma.propertySale.create({
       data: {
@@ -481,13 +504,19 @@ router.put("/sales/:id", authenticate, async (req: Request, res: Response) => {
     });
     if (!existing) return res.status(404).json({ error: "Sale not found" });
 
-    const saleAmount = Number(req.body.saleAmount || 0);
-    const paidAmount = Number(req.body.paidAmount || 0);
+    const saleAmount = req.body.saleAmount !== undefined ? Number(req.body.saleAmount || 0) : existing.saleAmount;
+    const paidAmount = req.body.paidAmount !== undefined ? Number(req.body.paidAmount || 0) : existing.paidAmount;
+    if (paidAmount > saleAmount) {
+      return res.status(400).json({ error: "Paid amount cannot exceed sale amount" });
+    }
+
     const sale = await prisma.propertySale.update({
       where: { id: req.params.id as string },
       data: {
         ...req.body,
         saleDate: req.body.saleDate ? new Date(req.body.saleDate) : undefined,
+        saleAmount,
+        paidAmount,
         dueAmount: saleAmount - paidAmount,
         status: paidAmount >= saleAmount ? "PAID" : paidAmount > 0 ? "PARTIAL" : "DUE",
       },
@@ -512,17 +541,26 @@ router.put("/sales/:id", authenticate, async (req: Request, res: Response) => {
 
 router.delete("/sales/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    const sale = await prisma.propertySale.findUnique({ where: { id: req.params.id as string } });
+    const saleId = req.params.id as string;
+    const sale = await prisma.propertySale.findUnique({ where: { id: saleId } });
     if (!sale) return res.status(404).json({ error: "Sale not found" });
 
-    await prisma.propertySale.delete({ where: { id: req.params.id as string } });
-    await prisma.propertyUnit.update({
-      where: { id: sale.unitId },
-      data: { status: "AVAILABLE" },
+    await prisma.$transaction(async (tx) => {
+      await tx.propertySale.delete({ where: { id: saleId } });
+      if (sale.bookingId) {
+        await tx.propertyBooking.update({
+          where: { id: sale.bookingId },
+          data: { status: "ACTIVE" },
+        });
+      }
+      await tx.propertyUnit.update({
+        where: { id: sale.unitId },
+        data: { status: sale.bookingId ? "BOOKED" : "AVAILABLE" },
+      });
     });
     res.json({ success: true, message: "Sale deleted" });
-  } catch {
-    res.status(500).json({ error: "Server error" });
+  } catch (err: unknown) {
+    res.status(400).json({ error: (err as Error).message });
   }
 });
 

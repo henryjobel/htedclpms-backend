@@ -24,16 +24,21 @@ router.post("/investors", authenticate, async (req: Request, res: Response) => {
 
 router.put("/investors/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    const investor = await prisma.investor.update({ where: { id: req.params.id }, data: req.body });
+    const investor = await prisma.investor.update({ where: { id: req.params.id as string }, data: req.body });
     res.json({ success: true, data: investor });
   } catch { res.status(500).json({ error: "Server error" }); }
 });
 
 router.delete("/investors/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    await prisma.investor.delete({ where: { id: req.params.id } });
+    const investorId = req.params.id as string;
+    await prisma.$transaction([
+      prisma.shareAssignment.deleteMany({ where: { investorId } }),
+      prisma.projectInvestment.deleteMany({ where: { investorId } }),
+      prisma.investor.delete({ where: { id: investorId } }),
+    ]);
     res.json({ success: true });
-  } catch { res.status(500).json({ error: "Server error" }); }
+  } catch (err: unknown) { res.status(400).json({ error: (err as Error).message }); }
 });
 
 // ── Project Investments ──────────────────────────────────────────────
@@ -59,14 +64,14 @@ router.post("/investments", authenticate, async (req: Request, res: Response) =>
 
 router.put("/investments/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    const investment = await prisma.projectInvestment.update({ where: { id: req.params.id }, data: req.body });
+    const investment = await prisma.projectInvestment.update({ where: { id: req.params.id as string }, data: req.body });
     res.json({ success: true, data: investment });
   } catch { res.status(500).json({ error: "Server error" }); }
 });
 
 router.delete("/investments/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    await prisma.projectInvestment.delete({ where: { id: req.params.id } });
+    await prisma.projectInvestment.delete({ where: { id: req.params.id as string } });
     res.json({ success: true });
   } catch { res.status(500).json({ error: "Server error" }); }
 });

@@ -23,31 +23,50 @@ const settings_routes_1 = __importDefault(require("./routes/settings.routes"));
 const reports_routes_1 = __importDefault(require("./routes/reports.routes"));
 const admin_routes_1 = __importDefault(require("./routes/admin.routes"));
 const masters_routes_1 = __importDefault(require("./routes/masters.routes"));
+const investment_routes_1 = __importDefault(require("./routes/investment.routes"));
+const share_project_routes_1 = __importDefault(require("./routes/share-project.routes"));
+const documents_routes_1 = __importDefault(require("./routes/documents.routes"));
+const sites_routes_1 = __importDefault(require("./routes/sites.routes"));
+const gantt_routes_1 = __importDefault(require("./routes/gantt.routes"));
 const error_handler_1 = require("./middleware/error-handler");
+const api_docs_1 = require("./lib/api-docs");
 const app = (0, express_1.default)();
 app.use((0, helmet_1.default)());
 app.use((0, compression_1.default)());
+const allowedOrigins = [
+    "http://localhost:3000",
+    "https://hetdclpms-frontend.vercel.app",
+    process.env.FRONTEND_URL,
+].filter(Boolean);
 app.use((0, cors_1.default)({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        }
+        else {
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
 }));
+app.options(/(.*)/, (0, cors_1.default)());
 if (process.env.NODE_ENV === "development") {
     app.use((0, morgan_1.default)("dev"));
 }
 app.use(express_1.default.json({ limit: "10mb" }));
 app.use(express_1.default.urlencoded({ extended: true }));
 app.get("/", (_, res) => {
-    res.json({
-        status: "ok",
-        service: "HET PMS API",
-        health: "/health",
-        apiBase: "/api",
-    });
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'none'");
+    res.send((0, api_docs_1.renderApiDocsHtml)(process.env.API_BASE_URL || "http://localhost:5000"));
 });
 app.get("/health", (_, res) => {
     res.json({ status: "ok", time: new Date().toISOString(), service: "HET PMS API" });
+});
+app.get("/api/catalog", (_, res) => {
+    res.json((0, api_docs_1.getApiCatalog)());
 });
 app.use("/api/auth", auth_routes_1.default);
 app.use("/api/projects", project_routes_1.default);
@@ -63,6 +82,11 @@ app.use("/api/settings", settings_routes_1.default);
 app.use("/api/reports", reports_routes_1.default);
 app.use("/api/admin", admin_routes_1.default);
 app.use("/api/masters", masters_routes_1.default);
+app.use("/api/investment", investment_routes_1.default);
+app.use("/api/share-project", share_project_routes_1.default);
+app.use("/api/documents", documents_routes_1.default);
+app.use("/api/sites", sites_routes_1.default);
+app.use("/api/gantt", gantt_routes_1.default);
 app.use(error_handler_1.notFound);
 app.use(error_handler_1.errorHandler);
 exports.default = app;

@@ -206,11 +206,14 @@ router.get("/approval-logs", auth_1.authenticate, async (req, res) => {
 router.delete("/vouchers/:id", auth_1.authenticate, async (req, res) => {
     try {
         const voucherId = req.params.id;
-        await prisma_1.prisma.voucher.delete({ where: { id: voucherId } });
+        await prisma_1.prisma.$transaction([
+            prisma_1.prisma.ledgerEntry.deleteMany({ where: { voucherId } }),
+            prisma_1.prisma.voucher.delete({ where: { id: voucherId } }),
+        ]);
         res.json({ success: true, message: "Voucher deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // GET /api/accounts/ledger
@@ -282,31 +285,50 @@ router.post("/installments/:id/pay", auth_1.authenticate, async (req, res) => {
     try {
         const { scheduleId, amount, paidDate } = req.body;
         const installmentId = req.params.id;
-        await Promise.all([
-            prisma_1.prisma.installmentSchedule.update({
+        const paymentAmount = Number(amount || 0);
+        if (!scheduleId || paymentAmount <= 0) {
+            return res.status(400).json({ error: "Valid schedule and payment amount are required" });
+        }
+        await prisma_1.prisma.$transaction(async (tx) => {
+            const schedule = await tx.installmentSchedule.findUnique({ where: { id: scheduleId } });
+            if (!schedule || schedule.installmentId !== installmentId) {
+                throw new Error("Installment schedule not found");
+            }
+            const newPaidAmount = schedule.paidAmount + paymentAmount;
+            if (newPaidAmount > schedule.amount) {
+                throw new Error("Payment exceeds scheduled amount");
+            }
+            await tx.installmentSchedule.update({
                 where: { id: scheduleId },
-                data: { paidAmount: amount, paidDate: new Date(paidDate), status: "paid" },
-            }),
-            prisma_1.prisma.installment.update({
+                data: {
+                    paidAmount: newPaidAmount,
+                    paidDate: paidDate ? new Date(paidDate) : new Date(),
+                    status: newPaidAmount >= schedule.amount ? "paid" : "partial",
+                },
+            });
+            await tx.installment.update({
                 where: { id: installmentId },
-                data: { paid: { increment: amount } },
-            }),
-        ]);
+                data: { paid: { increment: paymentAmount } },
+            });
+        });
         res.json({ success: true, message: "Payment recorded" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // DELETE /api/accounts/installments/:id
 router.delete("/installments/:id", auth_1.authenticate, async (req, res) => {
     try {
         const installmentId = req.params.id;
-        await prisma_1.prisma.installment.delete({ where: { id: installmentId } });
+        await prisma_1.prisma.$transaction([
+            prisma_1.prisma.installmentSchedule.deleteMany({ where: { installmentId } }),
+            prisma_1.prisma.installment.delete({ where: { id: installmentId } }),
+        ]);
         res.json({ success: true, message: "Installment deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // GET /api/accounts/bank-accounts
@@ -325,29 +347,56 @@ router.get("/bank-accounts", auth_1.authenticate, async (_req, res) => {
 // POST /api/accounts/bank-transactions
 router.post("/bank-transactions", auth_1.authenticate, async (req, res) => {
     try {
-        const account = await prisma_1.prisma.bankAccount.findUnique({
-            where: { id: req.body.bankAccountId },
-        });
-        if (!account)
-            return res.status(404).json({ error: "Bank account not found" });
         const amount = Number(req.body.amount || 0);
+        if (amount <= 0)
+            return res.status(400).json({ error: "Amount must be greater than zero" });
         const isCredit = String(req.body.type || "").toLowerCase() === "credit";
-        const nextBalance = isCredit ? account.balance + amount : account.balance - amount;
-        const transaction = await prisma_1.prisma.bankTransaction.create({
-            data: {
-                bankAccountId: account.id,
-                type: isCredit ? "credit" : "debit",
-                amount,
-                description: req.body.description,
-                balance: nextBalance,
-                transDate: req.body.transDate ? new Date(req.body.transDate) : new Date(),
-            },
-        });
-        await prisma_1.prisma.bankAccount.update({
-            where: { id: account.id },
-            data: { balance: nextBalance },
+        const transaction = await prisma_1.prisma.$transaction(async (tx) => {
+            const account = await tx.bankAccount.findUnique({
+                where: { id: req.body.bankAccountId },
+            });
+            if (!account)
+                throw new Error("Bank account not found");
+            const nextBalance = isCredit ? account.balance + amount : account.balance - amount;
+            const created = await tx.bankTransaction.create({
+                data: {
+                    bankAccountId: account.id,
+                    type: isCredit ? "credit" : "debit",
+                    amount,
+                    description: req.body.description,
+                    balance: nextBalance,
+                    transDate: req.body.transDate ? new Date(req.body.transDate) : new Date(),
+                },
+            });
+            await tx.bankAccount.update({
+                where: { id: account.id },
+                data: { balance: nextBalance },
+            });
+            return created;
         });
         res.status(201).json({ success: true, data: transaction });
+    }
+    catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+// DELETE /api/accounts/bank-transactions/:id
+router.delete("/bank-transactions/:id", auth_1.authenticate, async (req, res) => {
+    try {
+        await prisma_1.prisma.$transaction(async (tx) => {
+            const transaction = await tx.bankTransaction.findUnique({
+                where: { id: req.params.id },
+            });
+            if (!transaction)
+                throw new Error("Bank transaction not found");
+            const reverseAmount = transaction.type === "credit" ? -transaction.amount : transaction.amount;
+            await tx.bankAccount.update({
+                where: { id: transaction.bankAccountId },
+                data: { balance: { increment: reverseAmount } },
+            });
+            await tx.bankTransaction.delete({ where: { id: transaction.id } });
+        });
+        res.json({ success: true });
     }
     catch (err) {
         res.status(400).json({ error: err.message });

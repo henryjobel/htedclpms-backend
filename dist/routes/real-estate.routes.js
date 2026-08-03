@@ -187,11 +187,15 @@ router.put("/blocks/:id", auth_1.authenticate, async (req, res) => {
 });
 router.delete("/blocks/:id", auth_1.authenticate, async (req, res) => {
     try {
-        await prisma_1.prisma.propertyBlock.delete({ where: { id: req.params.id } });
+        const blockId = req.params.id;
+        await prisma_1.prisma.$transaction([
+            prisma_1.prisma.propertyUnit.updateMany({ where: { blockId }, data: { blockId: null } }),
+            prisma_1.prisma.propertyBlock.delete({ where: { id: blockId } }),
+        ]);
         res.json({ success: true, message: "Block deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // GET /api/real-estate/roads
@@ -230,11 +234,15 @@ router.put("/roads/:id", auth_1.authenticate, async (req, res) => {
 });
 router.delete("/roads/:id", auth_1.authenticate, async (req, res) => {
     try {
-        await prisma_1.prisma.propertyRoad.delete({ where: { id: req.params.id } });
+        const roadId = req.params.id;
+        await prisma_1.prisma.$transaction([
+            prisma_1.prisma.propertyUnit.updateMany({ where: { roadId }, data: { roadId: null } }),
+            prisma_1.prisma.propertyRoad.delete({ where: { id: roadId } }),
+        ]);
         res.json({ success: true, message: "Road deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // GET /api/real-estate/units
@@ -286,11 +294,16 @@ router.put("/units/:id", auth_1.authenticate, async (req, res) => {
 });
 router.delete("/units/:id", auth_1.authenticate, async (req, res) => {
     try {
-        await prisma_1.prisma.propertyUnit.delete({ where: { id: req.params.id } });
+        const unitId = req.params.id;
+        await prisma_1.prisma.$transaction([
+            prisma_1.prisma.propertySale.deleteMany({ where: { unitId } }),
+            prisma_1.prisma.propertyBooking.deleteMany({ where: { unitId } }),
+            prisma_1.prisma.propertyUnit.delete({ where: { id: unitId } }),
+        ]);
         res.json({ success: true, message: "Unit deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // GET /api/real-estate/bookings
@@ -362,18 +375,25 @@ router.put("/bookings/:id", auth_1.authenticate, async (req, res) => {
 });
 router.delete("/bookings/:id", auth_1.authenticate, async (req, res) => {
     try {
-        const booking = await prisma_1.prisma.propertyBooking.findUnique({ where: { id: req.params.id } });
+        const bookingId = req.params.id;
+        const booking = await prisma_1.prisma.propertyBooking.findUnique({ where: { id: bookingId } });
         if (!booking)
             return res.status(404).json({ error: "Booking not found" });
-        await prisma_1.prisma.propertyBooking.delete({ where: { id: req.params.id } });
-        await prisma_1.prisma.propertyUnit.update({
-            where: { id: booking.unitId },
-            data: { status: "AVAILABLE" },
+        const linkedSale = await prisma_1.prisma.propertySale.findUnique({ where: { bookingId } });
+        await prisma_1.prisma.$transaction(async (tx) => {
+            if (linkedSale) {
+                await tx.propertySale.update({ where: { id: linkedSale.id }, data: { bookingId: null } });
+            }
+            await tx.propertyBooking.delete({ where: { id: bookingId } });
+            await tx.propertyUnit.update({
+                where: { id: booking.unitId },
+                data: { status: linkedSale ? "SOLD" : "AVAILABLE" },
+            });
         });
         res.json({ success: true, message: "Booking deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // POST /api/real-estate/bookings/:id/cancel
@@ -428,6 +448,9 @@ router.post("/sales", auth_1.authenticate, async (req, res) => {
         const saleNo = `SAL-${Date.now()}`;
         const saleAmount = Number(req.body.saleAmount || 0);
         const paidAmount = Number(req.body.paidAmount || 0);
+        if (paidAmount > saleAmount) {
+            return res.status(400).json({ error: "Paid amount cannot exceed sale amount" });
+        }
         const sale = await prisma_1.prisma.propertySale.create({
             data: {
                 ...req.body,
@@ -462,13 +485,18 @@ router.put("/sales/:id", auth_1.authenticate, async (req, res) => {
         });
         if (!existing)
             return res.status(404).json({ error: "Sale not found" });
-        const saleAmount = Number(req.body.saleAmount || 0);
-        const paidAmount = Number(req.body.paidAmount || 0);
+        const saleAmount = req.body.saleAmount !== undefined ? Number(req.body.saleAmount || 0) : existing.saleAmount;
+        const paidAmount = req.body.paidAmount !== undefined ? Number(req.body.paidAmount || 0) : existing.paidAmount;
+        if (paidAmount > saleAmount) {
+            return res.status(400).json({ error: "Paid amount cannot exceed sale amount" });
+        }
         const sale = await prisma_1.prisma.propertySale.update({
             where: { id: req.params.id },
             data: {
                 ...req.body,
                 saleDate: req.body.saleDate ? new Date(req.body.saleDate) : undefined,
+                saleAmount,
+                paidAmount,
                 dueAmount: saleAmount - paidAmount,
                 status: paidAmount >= saleAmount ? "PAID" : paidAmount > 0 ? "PARTIAL" : "DUE",
             },
@@ -491,18 +519,27 @@ router.put("/sales/:id", auth_1.authenticate, async (req, res) => {
 });
 router.delete("/sales/:id", auth_1.authenticate, async (req, res) => {
     try {
-        const sale = await prisma_1.prisma.propertySale.findUnique({ where: { id: req.params.id } });
+        const saleId = req.params.id;
+        const sale = await prisma_1.prisma.propertySale.findUnique({ where: { id: saleId } });
         if (!sale)
             return res.status(404).json({ error: "Sale not found" });
-        await prisma_1.prisma.propertySale.delete({ where: { id: req.params.id } });
-        await prisma_1.prisma.propertyUnit.update({
-            where: { id: sale.unitId },
-            data: { status: "AVAILABLE" },
+        await prisma_1.prisma.$transaction(async (tx) => {
+            await tx.propertySale.delete({ where: { id: saleId } });
+            if (sale.bookingId) {
+                await tx.propertyBooking.update({
+                    where: { id: sale.bookingId },
+                    data: { status: "ACTIVE" },
+                });
+            }
+            await tx.propertyUnit.update({
+                where: { id: sale.unitId },
+                data: { status: sale.bookingId ? "BOOKED" : "AVAILABLE" },
+            });
         });
         res.json({ success: true, message: "Sale deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // POST /api/real-estate/sales/:id/installment-plan

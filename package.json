@@ -14,6 +14,7 @@
     "prisma:deploy": "prisma db push",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node --transpile-only prisma/seed.ts",
+    "prisma:reset-production": "ts-node --transpile-only prisma/production-reset.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

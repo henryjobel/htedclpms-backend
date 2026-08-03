@@ -27,14 +27,14 @@ router.post("/assignments", authenticate, async (req: Request, res: Response) =>
 
 router.put("/assignments/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    const assignment = await prisma.shareAssignment.update({ where: { id: req.params.id }, data: req.body });
+    const assignment = await prisma.shareAssignment.update({ where: { id: req.params.id as string }, data: req.body });
     res.json({ success: true, data: assignment });
   } catch { res.status(500).json({ error: "Server error" }); }
 });
 
 router.delete("/assignments/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    await prisma.shareAssignment.delete({ where: { id: req.params.id } });
+    await prisma.shareAssignment.delete({ where: { id: req.params.id as string } });
     res.json({ success: true });
   } catch { res.status(500).json({ error: "Server error" }); }
 });
@@ -59,14 +59,14 @@ router.post("/configs", authenticate, async (req: Request, res: Response) => {
 
 router.put("/configs/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    const config = await prisma.shareProjectConfig.update({ where: { id: req.params.id }, data: req.body });
+    const config = await prisma.shareProjectConfig.update({ where: { id: req.params.id as string }, data: req.body });
     res.json({ success: true, data: config });
   } catch { res.status(500).json({ error: "Server error" }); }
 });
 
 router.delete("/configs/:id", authenticate, async (req: Request, res: Response) => {
   try {
-    await prisma.shareProjectConfig.delete({ where: { id: req.params.id } });
+    await prisma.shareProjectConfig.delete({ where: { id: req.params.id as string } });
     res.json({ success: true });
   } catch { res.status(500).json({ error: "Server error" }); }
 });

@@ -34,6 +34,10 @@ const masterDefinitions: Record<string, MasterDefinition> = {
   sections: { key: "hrm_sections", label: "Section" },
   units: { key: "hrm_units", label: "Unit" },
   employees: { key: "hrm_employees", label: "Employee" },
+  billing_categories: { key: "billing_categories", label: "Billing Category" },
+  bill_items: { key: "bill_items", label: "Bill Item" },
+  boq_titles: { key: "boq_titles", label: "BOQ Title" },
+  service_work_names: { key: "service_work_names", label: "Service/Work Name" },
 };
 
 router.get("/definitions", authenticate, (_req: Request, res: Response) => {

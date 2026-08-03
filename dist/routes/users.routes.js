@@ -83,5 +83,16 @@ router.patch("/:id/status", auth_1.authenticate, async (req, res) => {
         res.status(500).json({ error: "Server error" });
     }
 });
+// DELETE /api/users/:id
+router.delete("/:id", auth_1.authenticate, async (req, res) => {
+    try {
+        const userId = req.params.id;
+        await prisma_1.prisma.user.delete({ where: { id: userId } });
+        res.json({ success: true });
+    }
+    catch {
+        res.status(500).json({ error: "Server error" });
+    }
+});
 exports.default = router;
 //# sourceMappingURL=users.routes.js.map

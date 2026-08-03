@@ -25,6 +25,7 @@ import documentsRoutes from "./routes/documents.routes";
 import sitesRoutes from "./routes/sites.routes";
 import ganttRoutes from "./routes/gantt.routes";
 import { errorHandler, notFound } from "./middleware/error-handler";
+import { getApiCatalog, renderApiDocsHtml } from "./lib/api-docs";
 
 const app = express();
 
@@ -60,16 +61,17 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.get("/", (_, res) => {
-  res.json({
-    status: "ok",
-    service: "HET PMS API",
-    health: "/health",
-    apiBase: "/api",
-  });
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'none'");
+  res.send(renderApiDocsHtml(process.env.API_BASE_URL || "http://localhost:5000"));
 });
 
 app.get("/health", (_, res) => {
   res.json({ status: "ok", time: new Date().toISOString(), service: "HET PMS API" });
+});
+
+app.get("/api/catalog", (_, res) => {
+  res.json(getApiCatalog());
 });
 
 app.use("/api/auth", authRoutes);

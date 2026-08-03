@@ -26,6 +26,33 @@ async function getEligibleApprovalRoles(module, amount) {
 async function logApprovalAction(params) {
     await prisma_1.prisma.approvalLog.create({ data: params });
 }
+function normalizeBillingAmounts(body, existing) {
+    const quantity = body.quantity !== undefined ? Number(body.quantity || 0) : existing?.quantity ?? 0;
+    const unitRate = body.unitRate !== undefined ? Number(body.unitRate || 0) : existing?.unitRate ?? 0;
+    const percentage = body.percentage !== undefined
+        ? Number(body.percentage)
+        : existing?.percentage ?? undefined;
+    const previousAmount = body.previousAmount !== undefined ? Number(body.previousAmount || 0) : existing?.previousAmount ?? 0;
+    const adjustmentAmount = body.adjustmentAmount !== undefined ? Number(body.adjustmentAmount || 0) : existing?.adjustmentAmount ?? 0;
+    const retentionAmount = body.retentionAmount !== undefined ? Number(body.retentionAmount || 0) : existing?.retentionAmount ?? 0;
+    const computedAmount = quantity * unitRate + adjustmentAmount - retentionAmount;
+    const billedAmount = body.billedAmount !== undefined ? Number(body.billedAmount || 0) : existing?.billedAmount ?? computedAmount;
+    const paidAmount = body.paidAmount !== undefined ? Number(body.paidAmount || 0) : existing?.paidAmount ?? 0;
+    if (paidAmount > billedAmount) {
+        throw new Error("Paid amount cannot exceed billed amount");
+    }
+    return {
+        quantity,
+        unitRate,
+        percentage,
+        previousAmount,
+        adjustmentAmount,
+        retentionAmount,
+        billedAmount,
+        paidAmount,
+        dueAmount: billedAmount - paidAmount,
+    };
+}
 // GET /api/operations/billing
 router.get("/billing", auth_1.authenticate, async (_req, res) => {
     try {
@@ -48,21 +75,12 @@ router.get("/billing", auth_1.authenticate, async (_req, res) => {
 // POST /api/operations/billing
 router.post("/billing", auth_1.authenticate, async (req, res) => {
     try {
-        const billedAmount = Number(req.body.billedAmount || 0);
-        const paidAmount = Number(req.body.paidAmount || 0);
+        const amounts = normalizeBillingAmounts(req.body);
         const billing = await prisma_1.prisma.billingRecord.create({
             data: {
                 ...req.body,
                 billingNo: `BR-${Date.now()}`,
-                quantity: Number(req.body.quantity || 0),
-                unitRate: Number(req.body.unitRate || 0),
-                percentage: req.body.percentage !== undefined ? Number(req.body.percentage) : undefined,
-                previousAmount: Number(req.body.previousAmount || 0),
-                adjustmentAmount: Number(req.body.adjustmentAmount || 0),
-                retentionAmount: Number(req.body.retentionAmount || 0),
-                billedAmount,
-                paidAmount,
-                dueAmount: billedAmount - paidAmount,
+                ...amounts,
                 billingDate: req.body.billingDate ? new Date(req.body.billingDate) : new Date(),
                 dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
                 createdById: req.user?.id,
@@ -77,29 +95,23 @@ router.post("/billing", auth_1.authenticate, async (req, res) => {
 // PUT /api/operations/billing/:id
 router.put("/billing/:id", auth_1.authenticate, async (req, res) => {
     try {
-        const billedAmount = Number(req.body.billedAmount || 0);
-        const paidAmount = Number(req.body.paidAmount || 0);
+        const existing = await prisma_1.prisma.billingRecord.findUnique({ where: { id: req.params.id } });
+        if (!existing)
+            return res.status(404).json({ error: "Billing record not found" });
+        const amounts = normalizeBillingAmounts(req.body, existing);
         const billing = await prisma_1.prisma.billingRecord.update({
             where: { id: req.params.id },
             data: {
                 ...req.body,
-                quantity: Number(req.body.quantity || 0),
-                unitRate: Number(req.body.unitRate || 0),
-                percentage: req.body.percentage !== undefined ? Number(req.body.percentage) : undefined,
-                previousAmount: Number(req.body.previousAmount || 0),
-                adjustmentAmount: Number(req.body.adjustmentAmount || 0),
-                retentionAmount: Number(req.body.retentionAmount || 0),
-                billedAmount,
-                paidAmount,
-                dueAmount: billedAmount - paidAmount,
+                ...amounts,
                 billingDate: req.body.billingDate ? new Date(req.body.billingDate) : undefined,
                 dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
             },
         });
         res.json({ success: true, data: billing });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // PATCH /api/operations/billing/:id/status
@@ -242,11 +254,15 @@ router.put("/assets/:id", auth_1.authenticate, async (req, res) => {
 // DELETE /api/operations/assets/:id
 router.delete("/assets/:id", auth_1.authenticate, async (req, res) => {
     try {
-        await prisma_1.prisma.assetItem.delete({ where: { id: req.params.id } });
+        const assetId = req.params.id;
+        await prisma_1.prisma.$transaction([
+            prisma_1.prisma.assetMaintenanceLog.deleteMany({ where: { assetId } }),
+            prisma_1.prisma.assetItem.delete({ where: { id: assetId } }),
+        ]);
         res.json({ success: true, message: "Asset deleted" });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // GET /api/operations/asset-maintenance
