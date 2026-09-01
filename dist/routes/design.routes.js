@@ -6,12 +6,20 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
+const os_1 = __importDefault(require("os"));
 const multer_1 = __importDefault(require("multer"));
 const prisma_1 = require("../lib/prisma");
 const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
-const uploadDir = path_1.default.join(process.cwd(), "uploads", "design");
-fs_1.default.mkdirSync(uploadDir, { recursive: true });
+const uploadDir = process.env.VERCEL
+    ? path_1.default.join(os_1.default.tmpdir(), "uploads", "design")
+    : path_1.default.join(process.cwd(), "uploads", "design");
+try {
+    fs_1.default.mkdirSync(uploadDir, { recursive: true });
+}
+catch {
+    // Gracefully ignore filesystem errors in read-only serverless lambdas
+}
 const upload = (0, multer_1.default)({
     storage: multer_1.default.diskStorage({
         destination: (_req, _file, cb) => cb(null, uploadDir),

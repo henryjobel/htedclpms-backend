@@ -2,13 +2,21 @@ import { Router, Request, Response } from "express";
 import { Prisma } from "@prisma/client";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import multer from "multer";
 import { prisma } from "../lib/prisma";
 import { authenticate } from "../middleware/auth";
 
 const router = Router();
-const uploadDir = path.join(process.cwd(), "uploads", "design");
-fs.mkdirSync(uploadDir, { recursive: true });
+const uploadDir = process.env.VERCEL
+  ? path.join(os.tmpdir(), "uploads", "design")
+  : path.join(process.cwd(), "uploads", "design");
+
+try {
+  fs.mkdirSync(uploadDir, { recursive: true });
+} catch {
+  // Gracefully ignore filesystem errors in read-only serverless lambdas
+}
 
 const upload = multer({
   storage: multer.diskStorage({
