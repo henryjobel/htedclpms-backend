@@ -24,6 +24,7 @@ import shareProjectRoutes from "./routes/share-project.routes";
 import documentsRoutes from "./routes/documents.routes";
 import sitesRoutes from "./routes/sites.routes";
 import ganttRoutes from "./routes/gantt.routes";
+import designRoutes from "./routes/design.routes";
 import { errorHandler, notFound } from "./middleware/error-handler";
 import { getApiCatalog, renderApiDocsHtml } from "./lib/api-docs";
 
@@ -59,6 +60,7 @@ if (process.env.NODE_ENV === "development") {
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static("uploads"));
 
 app.get("/", (_, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -93,6 +95,7 @@ app.use("/api/share-project", shareProjectRoutes);
 app.use("/api/documents", documentsRoutes);
 app.use("/api/sites", sitesRoutes);
 app.use("/api/gantt", ganttRoutes);
+app.use("/api/design", designRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

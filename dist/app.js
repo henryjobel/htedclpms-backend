@@ -28,6 +28,7 @@ const share_project_routes_1 = __importDefault(require("./routes/share-project.r
 const documents_routes_1 = __importDefault(require("./routes/documents.routes"));
 const sites_routes_1 = __importDefault(require("./routes/sites.routes"));
 const gantt_routes_1 = __importDefault(require("./routes/gantt.routes"));
+const design_routes_1 = __importDefault(require("./routes/design.routes"));
 const error_handler_1 = require("./middleware/error-handler");
 const api_docs_1 = require("./lib/api-docs");
 const app = (0, express_1.default)();
@@ -57,6 +58,7 @@ if (process.env.NODE_ENV === "development") {
 }
 app.use(express_1.default.json({ limit: "10mb" }));
 app.use(express_1.default.urlencoded({ extended: true }));
+app.use("/uploads", express_1.default.static("uploads"));
 app.get("/", (_, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'none'");
@@ -87,6 +89,7 @@ app.use("/api/share-project", share_project_routes_1.default);
 app.use("/api/documents", documents_routes_1.default);
 app.use("/api/sites", sites_routes_1.default);
 app.use("/api/gantt", gantt_routes_1.default);
+app.use("/api/design", design_routes_1.default);
 app.use(error_handler_1.notFound);
 app.use(error_handler_1.errorHandler);
 exports.default = app;

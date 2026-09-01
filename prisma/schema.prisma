@@ -96,6 +96,7 @@ model Project {
   documents          ProjectDocument[]
   sites              ProjectSite[]
   ganttTasks         GanttTask[]
+  designRecords      ProjectDesignRecord[]
 }
 
 enum ProjectStatus {
@@ -160,6 +161,42 @@ model ProgressLog {
   remarks    String?
   logDate    DateTime @default(now())
   createdAt  DateTime @default(now())
+}
+
+model DesignConsultant {
+  id          String   @id @default(cuid()) @map("_id")
+  name        String
+  company     String?
+  consultantType String
+  specialty   String?
+  phone       String?
+  email       String?
+  address     String?
+  licenseNo   String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  designRecords ProjectDesignRecord[]
+}
+
+model ProjectDesignRecord {
+  id            String   @id @default(cuid()) @map("_id")
+  project       Project  @relation(fields: [projectId], references: [id])
+  projectId     String
+  consultant    DesignConsultant? @relation(fields: [consultantId], references: [id])
+  consultantId  String?
+  category      String
+  title         String
+  status        String   @default("PENDING")
+  submissionDate DateTime?
+  approvalDate   DateTime?
+  feeAmount     Float    @default(0)
+  paidAmount    Float    @default(0)
+  documentUrl   String?
+  remarks       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 // ========================

@@ -225,6 +225,21 @@ exports.apiModules = [
         ],
     },
     {
+        name: "Design & Approval",
+        basePath: "/api/design",
+        description: "Architect, consultant, drawing submission, approval, document and design fee tracking.",
+        endpoints: [
+            { method: "GET", path: "/consultants", title: "Consultant List" },
+            { method: "POST", path: "/consultants", title: "Create Consultant" },
+            { method: "PUT", path: "/consultants/:id", title: "Update Consultant" },
+            { method: "DELETE", path: "/consultants/:id", title: "Deactivate Consultant" },
+            { method: "GET", path: "/records", title: "Design Records" },
+            { method: "POST", path: "/records", title: "Create Design Record" },
+            { method: "PUT", path: "/records/:id", title: "Update Design Record" },
+            { method: "DELETE", path: "/records/:id", title: "Delete Design Record" },
+        ],
+    },
+    {
         name: "Documents, Sites & Gantt",
         basePath: "/api",
         description: "Project document, site and Gantt task CRUD APIs.",

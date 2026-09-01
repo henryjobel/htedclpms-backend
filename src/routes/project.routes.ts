@@ -172,6 +172,7 @@ router.delete("/:id", authenticate, async (req: Request, res: Response) => {
       await tx.shareProjectConfig.deleteMany({ where: { projectId } });
       await tx.projectDocument.deleteMany({ where: { projectId } });
       await tx.projectSite.deleteMany({ where: { projectId } });
+      await tx.projectDesignRecord.deleteMany({ where: { projectId } });
 
       await tx.project.delete({ where: { id: projectId } });
     });
