@@ -16,14 +16,15 @@ export declare const apiModules: ApiModule[];
 export declare function getApiCatalog(): {
     service: string;
     version: string;
-    health: string;
+    status: string;
+    healthEndpoint: string;
     totalModules: number;
     totalEndpoints: number;
     auth: {
         type: string;
-        login: string;
+        loginUrl: string;
         header: string;
-        defaultLogin: {
+        defaultCredentials: {
             email: string;
             password: string;
         };

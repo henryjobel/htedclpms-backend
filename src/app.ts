@@ -27,6 +27,7 @@ import ganttRoutes from "./routes/gantt.routes";
 import designRoutes from "./routes/design.routes";
 import { errorHandler, notFound } from "./middleware/error-handler";
 import { getApiCatalog, renderApiDocsHtml } from "./lib/api-docs";
+import { prisma } from "./lib/prisma";
 
 const app = express();
 
@@ -73,12 +74,51 @@ app.use("/uploads", express.static("uploads"));
 
 app.get("/", (_, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'none'");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self' 'unsafe-inline' https: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:;"
+  );
   res.send(renderApiDocsHtml(process.env.API_BASE_URL || "http://localhost:5000"));
 });
 
-app.get("/health", (_, res) => {
-  res.json({ status: "ok", time: new Date().toISOString(), service: "HET PMS API" });
+app.get("/health", async (_, res) => {
+  let dbStatus = "disconnected";
+  let latencyMs = 0;
+  let dbError: string | undefined;
+
+  try {
+    const start = Date.now();
+    // Test DB connection with lightweight query
+    await prisma.user.findFirst({ select: { id: true } });
+    latencyMs = Date.now() - start;
+    dbStatus = "connected";
+  } catch (err: unknown) {
+    dbStatus = "error";
+    dbError = (err as Error)?.message || "Failed to query database";
+  }
+
+  const envCheck = {
+    DATABASE_URL: Boolean(process.env.DATABASE_URL),
+    JWT_SECRET: Boolean(process.env.JWT_SECRET),
+    FRONTEND_URL: process.env.FRONTEND_URL || "default",
+    NODE_ENV: process.env.NODE_ENV || "development",
+  };
+
+  const isHealthy = dbStatus === "connected" && envCheck.DATABASE_URL && envCheck.JWT_SECRET;
+
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? "healthy" : "degraded",
+    service: "HET PMS API Service",
+    timestamp: new Date().toISOString(),
+    database: {
+      status: dbStatus,
+      latencyMs,
+      ...(dbError ? { error: dbError } : {}),
+    },
+    environment: envCheck,
+    allowedOrigins,
+    uptimeSeconds: Math.floor(process.uptime()),
+  });
 });
 
 app.get("/api/catalog", (_, res) => {

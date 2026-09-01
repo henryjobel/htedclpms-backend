@@ -31,6 +31,7 @@ const gantt_routes_1 = __importDefault(require("./routes/gantt.routes"));
 const design_routes_1 = __importDefault(require("./routes/design.routes"));
 const error_handler_1 = require("./middleware/error-handler");
 const api_docs_1 = require("./lib/api-docs");
+const prisma_1 = require("./lib/prisma");
 const app = (0, express_1.default)();
 app.use((0, helmet_1.default)());
 app.use((0, compression_1.default)());
@@ -52,14 +53,13 @@ app.use((0, cors_1.default)({
             callback(null, true);
         }
         else {
-            callback(null, true); // Fallback to permit request instead of throwing unhandled 500
+            callback(null, true); // Fallback to permit request
         }
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
 }));
-app.options("*", (0, cors_1.default)());
 if (process.env.NODE_ENV === "development") {
     app.use((0, morgan_1.default)("dev"));
 }
@@ -68,11 +68,44 @@ app.use(express_1.default.urlencoded({ extended: true }));
 app.use("/uploads", express_1.default.static("uploads"));
 app.get("/", (_, res) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'none'");
+    res.setHeader("Content-Security-Policy", "default-src 'self' 'unsafe-inline' https: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'; img-src 'self' data: https:;");
     res.send((0, api_docs_1.renderApiDocsHtml)(process.env.API_BASE_URL || "http://localhost:5000"));
 });
-app.get("/health", (_, res) => {
-    res.json({ status: "ok", time: new Date().toISOString(), service: "HET PMS API" });
+app.get("/health", async (_, res) => {
+    let dbStatus = "disconnected";
+    let latencyMs = 0;
+    let dbError;
+    try {
+        const start = Date.now();
+        // Test DB connection with lightweight query
+        await prisma_1.prisma.user.findFirst({ select: { id: true } });
+        latencyMs = Date.now() - start;
+        dbStatus = "connected";
+    }
+    catch (err) {
+        dbStatus = "error";
+        dbError = err?.message || "Failed to query database";
+    }
+    const envCheck = {
+        DATABASE_URL: Boolean(process.env.DATABASE_URL),
+        JWT_SECRET: Boolean(process.env.JWT_SECRET),
+        FRONTEND_URL: process.env.FRONTEND_URL || "default",
+        NODE_ENV: process.env.NODE_ENV || "development",
+    };
+    const isHealthy = dbStatus === "connected" && envCheck.DATABASE_URL && envCheck.JWT_SECRET;
+    res.status(isHealthy ? 200 : 503).json({
+        status: isHealthy ? "healthy" : "degraded",
+        service: "HET PMS API Service",
+        timestamp: new Date().toISOString(),
+        database: {
+            status: dbStatus,
+            latencyMs,
+            ...(dbError ? { error: dbError } : {}),
+        },
+        environment: envCheck,
+        allowedOrigins,
+        uptimeSeconds: Math.floor(process.uptime()),
+    });
 });
 app.get("/api/catalog", (_, res) => {
     res.json((0, api_docs_1.getApiCatalog)());
