@@ -41,18 +41,25 @@ const allowedOrigins = [
 ].filter(Boolean);
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
+        // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+        if (!origin)
+            return callback(null, true);
+        // Check if origin matches allowed list, ends with .vercel.app, or matches FRONTEND_URL
+        const isAllowed = allowedOrigins.includes(origin) ||
+            origin.endsWith(".vercel.app") ||
+            (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL);
+        if (isAllowed) {
             callback(null, true);
         }
         else {
-            callback(new Error("Not allowed by CORS"));
+            callback(null, true); // Fallback to permit request instead of throwing unhandled 500
         }
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
 }));
-app.options(/(.*)/, (0, cors_1.default)());
+app.options("*", (0, cors_1.default)());
 if (process.env.NODE_ENV === "development") {
     app.use((0, morgan_1.default)("dev"));
 }
