@@ -62,18 +62,6 @@ router.get("/", authenticate, async (req: Request, res: Response) => {
 router.get("/:id", authenticate, async (req: Request, res: Response) => {
   try {
     const projectId = req.params.id as string;
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      include: {
-        boqItems: true,
-        tasks: { include: { assignedTo: { select: { name: true } } } },
-        progressLogs: { orderBy: { logDate: "desc" }, take: 10 },
-        contractorAssigns: { include: { contractor: true } },
-        workerAssigns: { include: { worker: true } },
-        installments: true,
-        projectExpenses: true,
-      },
-    });
     const [project, vouchers] = await Promise.all([
       prisma.project.findUnique({
         where: { id: projectId },
@@ -97,7 +85,6 @@ router.get("/:id", authenticate, async (req: Request, res: Response) => {
     if (!project) return res.status(404).json({ error: "Project not found" });
 
     const totalIncome = project.installments.reduce((a, i) => a + i.paid, 0);
-    const voucherExpense = project.vouchers
     const voucherExpense = vouchers
       .filter((v) => v.type === "PAYMENT" || v.type === "ADJUSTMENT")
       .reduce((a, v) => a + v.amount, 0);
