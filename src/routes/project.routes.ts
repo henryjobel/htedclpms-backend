@@ -74,13 +74,46 @@ router.get("/:id", authenticate, async (req: Request, res: Response) => {
         projectExpenses: true,
       },
     });
+    const [project, vouchers] = await Promise.all([
+      prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          boqItems: true,
+          tasks: { include: { assignedTo: { select: { name: true } } } },
+          progressLogs: { orderBy: { logDate: "desc" }, take: 10 },
+          contractorAssigns: { include: { contractor: true } },
+          workerAssigns: { include: { worker: true } },
+          installments: true,
+          projectExpenses: true,
+        },
+      }),
+      prisma.voucher.findMany({
+        where: { projectId },
+        include: { createdBy: { select: { name: true } } },
+        orderBy: { voucherDate: "desc" },
+      }),
+    ]);
 
     if (!project) return res.status(404).json({ error: "Project not found" });
 
     const totalIncome = project.installments.reduce((a, i) => a + i.paid, 0);
-    const totalExpense = project.projectExpenses.reduce((a, e) => a + e.amount, 0);
+    const voucherExpense = project.vouchers
+    const voucherExpense = vouchers
+      .filter((v) => v.type === "PAYMENT" || v.type === "ADJUSTMENT")
+      .reduce((a, v) => a + v.amount, 0);
+    const projectExpenseSum = project.projectExpenses.reduce((a, e) => a + e.amount, 0);
+    const totalExpense = voucherExpense + projectExpenseSum;
 
-    res.json({ success: true, data: { ...project, totalIncome, totalExpense, profit: totalIncome - totalExpense } });
+    res.json({
+      success: true,
+      data: {
+        ...project,
+        vouchers,
+        totalIncome,
+        totalExpense,
+        profit: totalIncome - totalExpense,
+      },
+    });
   } catch {
     res.status(500).json({ error: "Server error" });
   }
