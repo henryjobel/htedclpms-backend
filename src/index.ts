@@ -17,8 +17,9 @@ async function start() {
   try {
     await prisma.$connect();
     console.log("   MongoDB: Connected");
-  } catch {
+  } catch (error) {
     console.error("   MongoDB: Connection FAILED");
+    console.error(error);
     process.exit(1);
   }
 

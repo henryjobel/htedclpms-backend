@@ -119,6 +119,7 @@ model BOQItem {
   laborCost    Float    @default(0)
   totalCost    Float
   phase        String?
+  subcategory  String?
   createdAt    DateTime @default(now())
 }
 

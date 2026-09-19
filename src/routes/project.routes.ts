@@ -2,27 +2,55 @@ import { Router, Request, Response } from "express";
 import { Prisma, ProjectStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { authenticate } from "../middleware/auth";
+import {
+  PROJECT_PHASES,
+  PHASE_SUBCATEGORIES_MAP,
+  validatePhaseSubcategory,
+} from "../lib/phase-subcategories";
 
 const router = Router();
+
+// GET /api/projects/meta/phases-subcategories
+router.get("/meta/phases-subcategories", (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: {
+      phases: PROJECT_PHASES,
+      subcategoriesMap: PHASE_SUBCATEGORIES_MAP,
+    },
+  });
+});
 
 function normalizeBOQData(body: Record<string, unknown>, existing?: {
   quantity: number;
   unitRate: number;
   materialCost: number;
   laborCost: number;
+  phase?: string | null;
+  subcategory?: string | null;
 }) {
   const quantity = body.quantity !== undefined ? Number(body.quantity || 0) : existing?.quantity ?? 0;
   const unitRate = body.unitRate !== undefined ? Number(body.unitRate || 0) : existing?.unitRate ?? 0;
   const materialCost = body.materialCost !== undefined ? Number(body.materialCost || 0) : existing?.materialCost ?? 0;
   const laborCost = body.laborCost !== undefined ? Number(body.laborCost || 0) : existing?.laborCost ?? 0;
 
+  const rawPhase = body.phase !== undefined ? (body.phase as string) : existing?.phase;
+  const rawSubcategory = body.subcategory !== undefined ? (body.subcategory as string) : existing?.subcategory;
+  const { normalizedPhase, normalizedSubcategory } = validatePhaseSubcategory(rawPhase, rawSubcategory);
+
+  const totalCost = (materialCost + laborCost > 0)
+    ? (materialCost + laborCost)
+    : (body.totalCost !== undefined ? Number(body.totalCost || 0) : quantity * unitRate);
+
   return {
     ...body,
+    phase: normalizedPhase || undefined,
+    subcategory: normalizedSubcategory || undefined,
     quantity,
     unitRate,
     materialCost,
     laborCost,
-    totalCost: quantity * unitRate + materialCost + laborCost,
+    totalCost,
   };
 }
 
