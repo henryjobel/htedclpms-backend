@@ -19,8 +19,9 @@ async function start() {
         await prisma_1.prisma.$connect();
         console.log("   MongoDB: Connected");
     }
-    catch {
+    catch (error) {
         console.error("   MongoDB: Connection FAILED");
+        console.error(error);
         process.exit(1);
     }
     app_1.default.listen(PORT, () => {
