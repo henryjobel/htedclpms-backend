@@ -121,6 +121,8 @@ model BOQItem {
   phase        String?
   subcategory  String?
   createdAt    DateTime @default(now())
+
+  vouchers     Voucher[]
 }
 
 model Task {
@@ -612,6 +614,9 @@ model Voucher {
   type        VoucherType
   project     Project?    @relation(fields: [projectId], references: [id])
   projectId   String?
+  boqItem     BOQItem?    @relation(fields: [boqItemId], references: [id])
+  boqItemId   String?
+  boqCostType String?
   amount      Float
   description String?
   status      String      @default("pending")

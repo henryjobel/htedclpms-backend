@@ -3,19 +3,38 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const prisma_1 = require("../lib/prisma");
 const auth_1 = require("../middleware/auth");
+const phase_subcategories_1 = require("../lib/phase-subcategories");
 const router = (0, express_1.Router)();
+// GET /api/projects/meta/phases-subcategories
+router.get("/meta/phases-subcategories", (_req, res) => {
+    res.json({
+        success: true,
+        data: {
+            phases: phase_subcategories_1.PROJECT_PHASES,
+            subcategoriesMap: phase_subcategories_1.PHASE_SUBCATEGORIES_MAP,
+        },
+    });
+});
 function normalizeBOQData(body, existing) {
     const quantity = body.quantity !== undefined ? Number(body.quantity || 0) : existing?.quantity ?? 0;
     const unitRate = body.unitRate !== undefined ? Number(body.unitRate || 0) : existing?.unitRate ?? 0;
     const materialCost = body.materialCost !== undefined ? Number(body.materialCost || 0) : existing?.materialCost ?? 0;
     const laborCost = body.laborCost !== undefined ? Number(body.laborCost || 0) : existing?.laborCost ?? 0;
+    const rawPhase = body.phase !== undefined ? body.phase : existing?.phase;
+    const rawSubcategory = body.subcategory !== undefined ? body.subcategory : existing?.subcategory;
+    const { normalizedPhase, normalizedSubcategory } = (0, phase_subcategories_1.validatePhaseSubcategory)(rawPhase, rawSubcategory);
+    const totalCost = (materialCost + laborCost > 0)
+        ? (materialCost + laborCost)
+        : (body.totalCost !== undefined ? Number(body.totalCost || 0) : quantity * unitRate);
     return {
         ...body,
+        phase: normalizedPhase || undefined,
+        subcategory: normalizedSubcategory || undefined,
         quantity,
         unitRate,
         materialCost,
         laborCost,
-        totalCost: quantity * unitRate + materialCost + laborCost,
+        totalCost,
     };
 }
 function normalizeQuotationItems(items = []) {
@@ -66,15 +85,22 @@ router.get("/:id", auth_1.authenticate, async (req, res) => {
             }),
             prisma_1.prisma.voucher.findMany({
                 where: { projectId },
-                include: { createdBy: { select: { name: true } } },
+                include: {
+                    createdBy: { select: { name: true } },
+                    ledgerEntries: { include: { account: true }, orderBy: { debit: "desc" } },
+                },
                 orderBy: { voucherDate: "desc" },
             }),
         ]);
         if (!project)
             return res.status(404).json({ error: "Project not found" });
-        const totalIncome = project.installments.reduce((a, i) => a + i.paid, 0);
+        const installmentIncome = project.installments.reduce((a, i) => a + i.paid, 0);
+        const voucherIncome = vouchers
+            .filter((v) => v.type === "RECEIPT")
+            .reduce((a, v) => a + v.amount, 0);
+        const totalIncome = installmentIncome + voucherIncome;
         const voucherExpense = vouchers
-            .filter((v) => v.type === "PAYMENT" || v.type === "ADJUSTMENT")
+            .filter((v) => v.type === "PAYMENT" || v.type === "JOURNAL" || v.type === "ADJUSTMENT")
             .reduce((a, v) => a + v.amount, 0);
         const projectExpenseSum = project.projectExpenses.reduce((a, e) => a + e.amount, 0);
         const totalExpense = voucherExpense + projectExpenseSum;
@@ -84,6 +110,8 @@ router.get("/:id", auth_1.authenticate, async (req, res) => {
                 ...project,
                 vouchers,
                 totalIncome,
+                installmentIncome,
+                voucherIncome,
                 totalExpense,
                 profit: totalIncome - totalExpense,
             },

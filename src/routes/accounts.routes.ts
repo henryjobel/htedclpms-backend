@@ -242,6 +242,7 @@ router.get("/vouchers", authenticate, async (req: Request, res: Response) => {
       include: {
         project: { select: { name: true } },
         createdBy: { select: { name: true } },
+        boqItem: { select: { id: true, description: true, phase: true, subcategory: true } },
         ledgerEntries: { include: { account: true } },
       },
       orderBy: { voucherDate: "desc" },
@@ -256,9 +257,33 @@ router.get("/vouchers", authenticate, async (req: Request, res: Response) => {
 // POST /api/accounts/vouchers
 router.post("/vouchers", authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { type, projectId, amount, description, entries, voucherDate, debitAccountId, creditAccountId } = req.body;
+    const {
+      type,
+      projectId,
+      amount,
+      description,
+      entries,
+      voucherDate,
+      debitAccountId,
+      creditAccountId,
+      boqItemId,
+      boqCostType,
+    } = req.body;
     const voucherNo = `V-${Date.now()}`;
     const voucherAmount = Number(amount || 0);
+
+    if (boqItemId && ["RECEIPT", "CONTRA"].includes(type)) {
+      throw new Error("Only construction expense vouchers can be linked to a BOQ item");
+    }
+
+    if (boqItemId) {
+      const boqItem = await prisma.bOQItem.findUnique({ where: { id: boqItemId } });
+      if (!boqItem) throw new Error("BOQ item not found");
+      if (!projectId || boqItem.projectId !== projectId) {
+        throw new Error("BOQ item must belong to the selected project");
+      }
+    }
+
     const ledgerEntries = await buildVoucherLedgerEntries({
       type,
       projectId,
@@ -275,6 +300,8 @@ router.post("/vouchers", authenticate, async (req: AuthRequest, res: Response) =
         voucherNo,
         type,
         projectId,
+        boqItemId: boqItemId || undefined,
+        boqCostType: boqItemId ? (boqCostType === "labor" ? "labor" : "material") : undefined,
         amount: voucherAmount,
         description,
         voucherDate: voucherDate ? new Date(voucherDate) : undefined,
@@ -284,7 +311,18 @@ router.post("/vouchers", authenticate, async (req: AuthRequest, res: Response) =
       include: { ledgerEntries: { include: { account: true } } },
     });
 
-    res.status(201).json({ success: true, data: voucher });
+    if (boqItemId && ["PAYMENT", "JOURNAL", "ADJUSTMENT"].includes(type)) {
+      const costField = boqCostType === "labor" ? "laborCost" : "materialCost";
+      await prisma.bOQItem.update({
+        where: { id: boqItemId },
+        data: {
+          [costField]: { increment: voucherAmount },
+          totalCost: { increment: voucherAmount },
+        },
+      });
+    }
+
+    res.status(201).json({ success: true, data: { ...voucher, boqItemId: boqItemId || null, boqCostType: boqCostType || null } });
   } catch (err: unknown) {
     res.status(400).json({ error: (err as Error).message });
   }
@@ -354,10 +392,24 @@ router.get("/approval-logs", authenticate, async (req: Request, res: Response) =
 router.delete("/vouchers/:id", authenticate, async (req: Request, res: Response) => {
   try {
     const voucherId = req.params.id as string;
+    const voucher = await prisma.voucher.findUnique({ where: { id: voucherId } });
+    if (!voucher) return res.status(404).json({ error: "Voucher not found" });
+
     await prisma.$transaction([
       prisma.ledgerEntry.deleteMany({ where: { voucherId } }),
       prisma.voucher.delete({ where: { id: voucherId } }),
     ]);
+
+    if (voucher.boqItemId && ["PAYMENT", "JOURNAL", "ADJUSTMENT"].includes(voucher.type)) {
+      // Legacy vouchers default to material when no cost classification was stored.
+      await prisma.bOQItem.update({
+        where: { id: voucher.boqItemId },
+        data: {
+          [voucher.boqCostType === "labor" ? "laborCost" : "materialCost"]: { decrement: voucher.amount },
+          totalCost: { decrement: voucher.amount },
+        },
+      });
+    }
     res.json({ success: true, message: "Voucher deleted" });
   } catch (err: unknown) {
     res.status(400).json({ error: (err as Error).message });

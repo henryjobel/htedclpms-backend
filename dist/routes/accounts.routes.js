@@ -4,6 +4,93 @@ const express_1 = require("express");
 const prisma_1 = require("../lib/prisma");
 const auth_1 = require("../middleware/auth");
 const router = (0, express_1.Router)();
+async function ensureAccount(code, name, type) {
+    return prisma_1.prisma.account.upsert({
+        where: { code },
+        update: {},
+        create: { code, name, type },
+    });
+}
+function inferExpenseAccountCode(description) {
+    const text = (description || "").toLowerCase();
+    if (text.includes("labour") || text.includes("labor") || text.includes("worker") || text.includes("wage"))
+        return "4002";
+    if (text.includes("contractor"))
+        return "4003";
+    if (text.includes("transport") || text.includes("fuel") || text.includes("utilities"))
+        return "4004";
+    if (text.includes("office") || text.includes("admin"))
+        return "4005";
+    return "4001";
+}
+async function buildVoucherLedgerEntries(params) {
+    const amount = Number(params.amount || 0);
+    if (amount <= 0)
+        throw new Error("Voucher amount must be greater than zero");
+    const entryDate = params.voucherDate ? new Date(params.voucherDate) : new Date();
+    const providedEntries = Array.isArray(params.entries) ? params.entries : [];
+    const normalize = (entry) => ({
+        accountId: entry.accountId,
+        projectId: entry.projectId ?? params.projectId,
+        debit: Number(entry.debit || 0),
+        credit: Number(entry.credit || 0),
+        description: entry.description ?? params.description,
+        entryDate: entry.entryDate ? new Date(entry.entryDate) : entryDate,
+    });
+    let ledgerEntries = providedEntries.length > 0 ? providedEntries.map(normalize) : [];
+    if (ledgerEntries.length === 0) {
+        const cashAccount = await ensureAccount("1001", "Cash in Hand", "CASH");
+        const bankAccount = await ensureAccount("1002", "BRAC Bank - Current Account", "BANK");
+        const incomeAccount = await ensureAccount("3002", "Booking Money Income", "INCOME");
+        const payableAccount = await ensureAccount("2001", "Accounts Payable - Suppliers", "LIABILITY");
+        const expenseCode = inferExpenseAccountCode(params.description);
+        const expenseAccount = await ensureAccount(expenseCode, expenseCode === "4002" ? "Labor Cost Expense" :
+            expenseCode === "4003" ? "Contractor Payment Expense" :
+                expenseCode === "4004" ? "Equipment & Transport Expense" :
+                    expenseCode === "4005" ? "Office & Admin Expense" :
+                        "Material Purchase Expense", "EXPENSE");
+        const debitAccountId = params.debitAccountId;
+        const creditAccountId = params.creditAccountId;
+        const common = { projectId: params.projectId, description: params.description, entryDate };
+        if (params.type === "RECEIPT") {
+            ledgerEntries = [
+                { ...common, accountId: debitAccountId || cashAccount.id, debit: amount, credit: 0 },
+                { ...common, accountId: creditAccountId || incomeAccount.id, debit: 0, credit: amount },
+            ];
+        }
+        else if (params.type === "PAYMENT") {
+            ledgerEntries = [
+                { ...common, accountId: debitAccountId || expenseAccount.id, debit: amount, credit: 0 },
+                { ...common, accountId: creditAccountId || cashAccount.id, debit: 0, credit: amount },
+            ];
+        }
+        else if (params.type === "CONTRA") {
+            const toAccountId = debitAccountId || bankAccount.id;
+            const fromAccountId = creditAccountId || cashAccount.id;
+            if (toAccountId === fromAccountId)
+                throw new Error("Contra debit and credit accounts must be different");
+            ledgerEntries = [
+                { ...common, accountId: toAccountId, debit: amount, credit: 0 },
+                { ...common, accountId: fromAccountId, debit: 0, credit: amount },
+            ];
+        }
+        else {
+            ledgerEntries = [
+                { ...common, accountId: debitAccountId || expenseAccount.id, debit: amount, credit: 0 },
+                { ...common, accountId: creditAccountId || payableAccount.id, debit: 0, credit: amount },
+            ];
+        }
+    }
+    const totalDebit = ledgerEntries.reduce((sum, entry) => sum + Number(entry.debit || 0), 0);
+    const totalCredit = ledgerEntries.reduce((sum, entry) => sum + Number(entry.credit || 0), 0);
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        throw new Error("Debit and credit totals must be equal");
+    }
+    if (Math.abs(totalDebit - amount) > 0.01) {
+        throw new Error("Voucher amount must match ledger debit/credit total");
+    }
+    return ledgerEntries;
+}
 async function getEligibleApprovalRoles(module, amount) {
     const layers = await prisma_1.prisma.approvalLayer.findMany({
         where: { module, isActive: true },
@@ -127,24 +214,36 @@ router.get("/vouchers", auth_1.authenticate, async (req, res) => {
 // POST /api/accounts/vouchers
 router.post("/vouchers", auth_1.authenticate, async (req, res) => {
     try {
-        const { type, projectId, amount, description, entries } = req.body;
+        const { type, projectId, amount, description, entries, voucherDate, debitAccountId, creditAccountId } = req.body;
         const voucherNo = `V-${Date.now()}`;
+        const voucherAmount = Number(amount || 0);
+        const ledgerEntries = await buildVoucherLedgerEntries({
+            type,
+            projectId,
+            amount: voucherAmount,
+            description,
+            entries,
+            voucherDate,
+            debitAccountId,
+            creditAccountId,
+        });
         const voucher = await prisma_1.prisma.voucher.create({
             data: {
                 voucherNo,
                 type,
                 projectId,
-                amount,
+                amount: voucherAmount,
                 description,
+                voucherDate: voucherDate ? new Date(voucherDate) : undefined,
                 userId: req.user.id,
-                ledgerEntries: { create: entries },
+                ledgerEntries: { create: ledgerEntries },
             },
-            include: { ledgerEntries: true },
+            include: { ledgerEntries: { include: { account: true } } },
         });
         res.status(201).json({ success: true, data: voucher });
     }
-    catch {
-        res.status(500).json({ error: "Server error" });
+    catch (err) {
+        res.status(400).json({ error: err.message });
     }
 });
 // PATCH /api/accounts/vouchers/:id/approve
@@ -154,6 +253,9 @@ router.patch("/vouchers/:id/approve", auth_1.authenticate, async (req, res) => {
         const existingVoucher = await prisma_1.prisma.voucher.findUnique({ where: { id: voucherId } });
         if (!existingVoucher)
             return res.status(404).json({ error: "Voucher not found" });
+        if (existingVoucher.status === "approved") {
+            return res.json({ success: true, data: existingVoucher });
+        }
         const eligibleRoles = await getEligibleApprovalRoles("VOUCHER", existingVoucher.amount);
         if (eligibleRoles.length > 0 && !eligibleRoles.includes(req.user.role)) {
             return res.status(403).json({ error: "Your role is not allowed to approve this voucher" });
@@ -170,11 +272,12 @@ router.patch("/vouchers/:id/approve", auth_1.authenticate, async (req, res) => {
             status: "approved",
             actedById: req.user.id,
             amount: voucher.amount,
-            remarks: req.body.remarks,
+            remarks: req.body?.remarks,
         });
         res.json({ success: true, data: voucher });
     }
-    catch {
+    catch (err) {
+        console.error("Voucher approval failed", err);
         res.status(500).json({ error: "Server error" });
     }
 });
