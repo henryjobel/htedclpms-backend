@@ -306,6 +306,7 @@ router.post("/vouchers", authenticate, async (req: AuthRequest, res: Response) =
         description,
         voucherDate: voucherDate ? new Date(voucherDate) : undefined,
         userId: req.user!.id,
+        status: projectId ? "approved" : undefined,
         ledgerEntries: { create: ledgerEntries },
       },
       include: { ledgerEntries: { include: { account: true } } },

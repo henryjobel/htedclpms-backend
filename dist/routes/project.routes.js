@@ -87,6 +87,7 @@ router.get("/:id", auth_1.authenticate, async (req, res) => {
                 where: { projectId },
                 include: {
                     createdBy: { select: { name: true } },
+                    boqItem: { select: { id: true, description: true, phase: true, subcategory: true } },
                     ledgerEntries: { include: { account: true }, orderBy: { debit: "desc" } },
                 },
                 orderBy: { voucherDate: "desc" },
