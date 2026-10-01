@@ -297,6 +297,10 @@ router.patch("/vouchers/:id/approve", authenticate, async (req: AuthRequest, res
     const existingVoucher = await prisma.voucher.findUnique({ where: { id: voucherId } });
     if (!existingVoucher) return res.status(404).json({ error: "Voucher not found" });
 
+    if (existingVoucher.status === "approved") {
+      return res.json({ success: true, data: existingVoucher });
+    }
+
     const eligibleRoles = await getEligibleApprovalRoles("VOUCHER", existingVoucher.amount);
     if (eligibleRoles.length > 0 && !eligibleRoles.includes(req.user!.role)) {
       return res.status(403).json({ error: "Your role is not allowed to approve this voucher" });
@@ -315,10 +319,11 @@ router.patch("/vouchers/:id/approve", authenticate, async (req: AuthRequest, res
       status: "approved",
       actedById: req.user!.id,
       amount: voucher.amount,
-      remarks: req.body.remarks,
+      remarks: req.body?.remarks,
     });
     res.json({ success: true, data: voucher });
-  } catch {
+  } catch (err: unknown) {
+    console.error("Voucher approval failed", err);
     res.status(500).json({ error: "Server error" });
   }
 });
