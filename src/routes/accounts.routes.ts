@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { authenticate } from "../middleware/auth";
 import { AuthRequest } from "../middleware/auth";
+import { generateVoucherNo } from "../lib/voucher-number";
 
 const router = Router();
 
@@ -61,7 +62,7 @@ async function buildVoucherLedgerEntries(params: {
 
   if (ledgerEntries.length === 0) {
     const cashAccount = await ensureAccount("1001", "Cash in Hand", "CASH");
-    const bankAccount = await ensureAccount("1002", "BRAC Bank - Current Account", "BANK");
+    const bankAccount = await ensureAccount("1002", "Bank Account", "BANK");
     const incomeAccount = await ensureAccount("3002", "Booking Money Income", "INCOME");
     const payableAccount = await ensureAccount("2001", "Accounts Payable - Suppliers", "LIABILITY");
     const expenseCode = inferExpenseAccountCode(params.description);
@@ -269,7 +270,7 @@ router.post("/vouchers", authenticate, async (req: AuthRequest, res: Response) =
       boqItemId,
       boqCostType,
     } = req.body;
-    const voucherNo = `V-${Date.now()}`;
+    const voucherNo = await generateVoucherNo(type);
     const voucherAmount = Number(amount || 0);
 
     if (boqItemId && ["RECEIPT", "CONTRA"].includes(type)) {

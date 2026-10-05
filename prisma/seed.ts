@@ -67,8 +67,7 @@ async function main() {
   // Create Chart of Accounts
   const accountDefs = [
     { code: "1001", name: "Cash in Hand", type: "CASH" as const },
-    { code: "1002", name: "BRAC Bank - Current Account", type: "BANK" as const },
-    { code: "1003", name: "Dutch Bangla Bank - Current", type: "BANK" as const },
+    { code: "1002", name: "Bank Account", type: "BANK" as const },
     { code: "1100", name: "Accounts Receivable", type: "ASSET" as const },
     { code: "1200", name: "Inventory / Materials", type: "ASSET" as const },
     { code: "2001", name: "Accounts Payable - Suppliers", type: "LIABILITY" as const },
@@ -85,8 +84,14 @@ async function main() {
   ];
 
   for (const acc of accountDefs) {
-    await prisma.account.upsert({ where: { code: acc.code }, update: {}, create: acc });
+    const shouldRefreshName = acc.code === "1002";
+    await prisma.account.upsert({
+      where: { code: acc.code },
+      update: shouldRefreshName ? { name: acc.name, type: acc.type } : {},
+      create: acc,
+    });
   }
+  await prisma.account.updateMany({ where: { code: "1003", type: "BANK" }, data: { isActive: false } });
 
   // Create Suppliers
   const suppliers = await Promise.all([

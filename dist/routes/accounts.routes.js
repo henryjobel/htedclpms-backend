@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const prisma_1 = require("../lib/prisma");
 const auth_1 = require("../middleware/auth");
+const voucher_number_1 = require("../lib/voucher-number");
 const router = (0, express_1.Router)();
 async function ensureAccount(code, name, type) {
     return prisma_1.prisma.account.upsert({
@@ -40,7 +41,7 @@ async function buildVoucherLedgerEntries(params) {
     let ledgerEntries = providedEntries.length > 0 ? providedEntries.map(normalize) : [];
     if (ledgerEntries.length === 0) {
         const cashAccount = await ensureAccount("1001", "Cash in Hand", "CASH");
-        const bankAccount = await ensureAccount("1002", "BRAC Bank - Current Account", "BANK");
+        const bankAccount = await ensureAccount("1002", "Bank Account", "BANK");
         const incomeAccount = await ensureAccount("3002", "Booking Money Income", "INCOME");
         const payableAccount = await ensureAccount("2001", "Accounts Payable - Suppliers", "LIABILITY");
         const expenseCode = inferExpenseAccountCode(params.description);
@@ -216,7 +217,7 @@ router.get("/vouchers", auth_1.authenticate, async (req, res) => {
 router.post("/vouchers", auth_1.authenticate, async (req, res) => {
     try {
         const { type, projectId, amount, description, entries, voucherDate, debitAccountId, creditAccountId, boqItemId, boqCostType, } = req.body;
-        const voucherNo = `V-${Date.now()}`;
+        const voucherNo = await (0, voucher_number_1.generateVoucherNo)(type);
         const voucherAmount = Number(amount || 0);
         if (boqItemId && ["RECEIPT", "CONTRA"].includes(type)) {
             throw new Error("Only construction expense vouchers can be linked to a BOQ item");

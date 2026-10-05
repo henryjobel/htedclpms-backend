@@ -1,6 +1,7 @@
 import { Request, Response, Router } from "express";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
+import { generateVoucherNo } from "../lib/voucher-number";
 
 const router = Router();
 
@@ -176,7 +177,7 @@ router.patch("/billing/:id/status", authenticate, async (req: AuthRequest, res: 
       if (!existingVoucher) {
         await prisma.voucher.create({
           data: {
-            voucherNo: `V-${Date.now()}`,
+            voucherNo: await generateVoucherNo("JOURNAL"),
             type: "JOURNAL",
             projectId: updated.projectId,
             amount: updated.billedAmount,

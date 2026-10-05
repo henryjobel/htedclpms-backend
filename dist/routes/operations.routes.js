@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
 const prisma_1 = require("../lib/prisma");
+const voucher_number_1 = require("../lib/voucher-number");
 const router = (0, express_1.Router)();
 async function ensureAccount(code, name, type) {
     const existing = await prisma_1.prisma.account.findUnique({ where: { code } });
@@ -147,7 +148,7 @@ router.patch("/billing/:id/status", auth_1.authenticate, async (req, res) => {
             if (!existingVoucher) {
                 await prisma_1.prisma.voucher.create({
                     data: {
-                        voucherNo: `V-${Date.now()}`,
+                        voucherNo: await (0, voucher_number_1.generateVoucherNo)("JOURNAL"),
                         type: "JOURNAL",
                         projectId: updated.projectId,
                         amount: updated.billedAmount,
