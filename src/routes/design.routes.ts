@@ -40,6 +40,15 @@ function optionalDate(value: unknown) {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
+function validateDesignRecord(body: Record<string, unknown>) {
+  const feeAmount = Number(body.feeAmount ?? 0);
+  const paidAmount = Number(body.paidAmount ?? 0);
+  if (!Number.isFinite(feeAmount) || feeAmount < 0) return "feeAmount must be a non-negative number";
+  if (!Number.isFinite(paidAmount) || paidAmount < 0) return "paidAmount must be a non-negative number";
+  if (paidAmount > feeAmount) return "paidAmount cannot exceed feeAmount";
+  return null;
+}
+
 function normalizeConsultantData(body: Record<string, unknown>): Prisma.DesignConsultantUncheckedCreateInput {
   return {
     name: String(body.name || "Unnamed Consultant"),
@@ -152,6 +161,8 @@ router.get("/records", authenticate, async (req: Request, res: Response) => {
 router.post("/records", authenticate, async (req: Request, res: Response) => {
   try {
     if (!req.body.projectId) return res.status(400).json({ error: "projectId is required" });
+    const validationError = validateDesignRecord(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const record = await prisma.projectDesignRecord.create({ data: normalizeDesignRecordData(req.body) });
     res.status(201).json({ success: true, data: record });
   } catch (err: unknown) {
@@ -161,6 +172,8 @@ router.post("/records", authenticate, async (req: Request, res: Response) => {
 
 router.put("/records/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateDesignRecord(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const record = await prisma.projectDesignRecord.update({
       where: { id: req.params.id as string },
       data: normalizeDesignRecordData(req.body) as Prisma.ProjectDesignRecordUncheckedUpdateInput,

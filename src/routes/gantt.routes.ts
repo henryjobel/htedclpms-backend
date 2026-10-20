@@ -9,6 +9,19 @@ function toOptionalString(value: unknown) {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
+function validateGanttTask(body: Record<string, unknown>) {
+  const progress = Number(body.progress ?? 0);
+  const sortOrder = Number(body.sortOrder ?? 0);
+  const startDate = new Date(String(body.startDate || ""));
+  const endDate = new Date(String(body.endDate || ""));
+  if (!body.taskName || String(body.taskName).trim() === "") return "taskName is required";
+  if (!Number.isFinite(progress) || progress < 0 || progress > 100) return "progress must be between 0 and 100";
+  if (!Number.isInteger(sortOrder) || sortOrder < 0) return "sortOrder must be a non-negative integer";
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return "valid startDate and endDate are required";
+  if (endDate < startDate) return "endDate cannot be before startDate";
+  return null;
+}
+
 function normalizeGanttData(body: Record<string, unknown>): Prisma.GanttTaskCreateInput {
   const { projectId, taskName, phase, startDate, endDate, progress, assignee, color, dependencies, sortOrder } = body;
   const now = new Date();
@@ -41,6 +54,8 @@ router.get("/", authenticate, async (req: Request, res: Response) => {
 
 router.post("/", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateGanttTask(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const task = await prisma.ganttTask.create({ data: normalizeGanttData(req.body) });
     res.status(201).json({ success: true, data: task });
   } catch (err: unknown) { res.status(400).json({ error: (err as Error).message }); }
@@ -48,6 +63,8 @@ router.post("/", authenticate, async (req: Request, res: Response) => {
 
 router.put("/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateGanttTask(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const task = await prisma.ganttTask.update({
       where: { id: req.params.id as string },
       data: normalizeGanttData(req.body) as Prisma.GanttTaskUpdateInput,

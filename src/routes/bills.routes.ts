@@ -18,6 +18,7 @@ router.get("/", authenticate, async (req: Request, res: Response) => {
         project: { select: { name: true } },
         supplier: { select: { name: true } },
         contractor: { select: { name: true } },
+        po: { select: { id: true, poNumber: true, totalAmount: true, status: true } },
       },
       orderBy: { createdAt: "desc" },
     });

@@ -4,6 +4,14 @@ import { authenticate } from "../middleware/auth";
 
 const router = Router();
 
+function validateWorker(body: Record<string, unknown>) {
+  const dailyWage = Number(body.dailyWage ?? 0);
+  if (!body.name || String(body.name).trim() === "") return "name is required";
+  if (!body.role || String(body.role).trim() === "") return "role is required";
+  if (!Number.isFinite(dailyWage) || dailyWage < 0) return "dailyWage must be a non-negative number";
+  return null;
+}
+
 // GET /api/workers
 router.get("/", authenticate, async (req: Request, res: Response) => {
   try {
@@ -27,6 +35,8 @@ router.get("/", authenticate, async (req: Request, res: Response) => {
 // POST /api/workers
 router.post("/", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateWorker(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const worker = await prisma.worker.create({ data: req.body });
     res.status(201).json({ success: true, data: worker });
   } catch {
@@ -37,6 +47,8 @@ router.post("/", authenticate, async (req: Request, res: Response) => {
 // PUT /api/workers/:id
 router.put("/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateWorker(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const workerId = req.params.id as string;
     const worker = await prisma.worker.update({ where: { id: workerId }, data: req.body });
     res.json({ success: true, data: worker });
@@ -49,14 +61,19 @@ router.put("/:id", authenticate, async (req: Request, res: Response) => {
 router.post("/:id/attendance", authenticate, async (req: Request, res: Response) => {
   try {
     const { projectId, month, daysWorked } = req.body;
+    const workedDays = Number(daysWorked);
+    const monthDate = new Date(String(month || ""));
+    if (!projectId || Number.isNaN(monthDate.getTime()) || !Number.isInteger(workedDays) || workedDays < 0) {
+      return res.status(400).json({ error: "projectId, valid month and non-negative whole daysWorked are required" });
+    }
     const workerId = req.params.id as string;
     const worker = await prisma.worker.findUnique({ where: { id: workerId } });
     if (!worker) return res.status(404).json({ error: "Worker not found" });
 
-    const totalWage = worker.dailyWage * daysWorked;
+    const totalWage = worker.dailyWage * workedDays;
 
     const assignment = await prisma.workerAssignment.create({
-      data: { workerId, projectId, month: new Date(month), daysWorked, totalWage },
+      data: { workerId, projectId, month: monthDate, daysWorked: workedDays, totalWage },
     });
 
     res.status(201).json({ success: true, data: assignment });

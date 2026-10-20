@@ -5,6 +5,38 @@ import { generateVoucherNo } from "../lib/voucher-number";
 
 const router = Router();
 
+function validateAsset(body: Record<string, unknown>) {
+  const purchaseValue = Number(body.purchaseValue ?? 0);
+  const currentValue = Number(body.currentValue ?? 0);
+  if (!body.name || String(body.name).trim() === "") return "name is required";
+  if (!body.category || String(body.category).trim() === "") return "category is required";
+  if (![purchaseValue, currentValue].every((value) => Number.isFinite(value) && value >= 0)) return "asset values must be non-negative numbers";
+  if (currentValue > purchaseValue) return "currentValue cannot exceed purchaseValue";
+  if (body.purchaseDate && Number.isNaN(new Date(String(body.purchaseDate)).getTime())) return "purchaseDate must be valid";
+  return null;
+}
+
+function validateMaintenance(body: Record<string, unknown>) {
+  const cost = Number(body.cost ?? 0);
+  if (!body.assetId || !body.description || String(body.description).trim() === "") return "assetId and description are required";
+  if (!Number.isFinite(cost) || cost < 0) return "cost must be a non-negative number";
+  if (body.maintenanceDate && Number.isNaN(new Date(String(body.maintenanceDate)).getTime())) return "maintenanceDate must be valid";
+  if (body.nextDueDate && Number.isNaN(new Date(String(body.nextDueDate)).getTime())) return "nextDueDate must be valid";
+  return null;
+}
+
+function validateApprovalLayer(body: Record<string, unknown>) {
+  const level = Number(body.level ?? 1);
+  const minAmount = body.minAmount === undefined || body.minAmount === "" ? undefined : Number(body.minAmount);
+  const maxAmount = body.maxAmount === undefined || body.maxAmount === "" ? undefined : Number(body.maxAmount);
+  if (!body.module || !body.roleName || String(body.roleName).trim() === "") return "module and roleName are required";
+  if (!Number.isInteger(level) || level < 1) return "level must be a positive whole number";
+  if (minAmount !== undefined && (!Number.isFinite(minAmount) || minAmount < 0)) return "minAmount must be non-negative";
+  if (maxAmount !== undefined && (!Number.isFinite(maxAmount) || maxAmount < 0)) return "maxAmount must be non-negative";
+  if (minAmount !== undefined && maxAmount !== undefined && maxAmount < minAmount) return "maxAmount cannot be less than minAmount";
+  return null;
+}
+
 async function ensureAccount(code: string, name: string, type: "ASSET" | "LIABILITY" | "INCOME" | "EXPENSE" | "EQUITY" | "BANK" | "CASH") {
   const existing = await prisma.account.findUnique({ where: { code } });
   if (existing) return existing;
@@ -250,6 +282,8 @@ router.get("/assets", authenticate, async (_req: Request, res: Response) => {
 // POST /api/operations/assets
 router.post("/assets", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateAsset(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const asset = await prisma.assetItem.create({
       data: {
         ...req.body,
@@ -268,6 +302,8 @@ router.post("/assets", authenticate, async (req: Request, res: Response) => {
 // PUT /api/operations/assets/:id
 router.put("/assets/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateAsset(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const asset = await prisma.assetItem.update({
       where: { id: req.params.id as string },
       data: {
@@ -317,6 +353,8 @@ router.get("/asset-maintenance", authenticate, async (_req: Request, res: Respon
 // POST /api/operations/asset-maintenance
 router.post("/asset-maintenance", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateMaintenance(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const row = await prisma.assetMaintenanceLog.create({
       data: {
         ...req.body,
@@ -334,6 +372,8 @@ router.post("/asset-maintenance", authenticate, async (req: Request, res: Respon
 // PUT /api/operations/asset-maintenance/:id
 router.put("/asset-maintenance/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateMaintenance(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const row = await prisma.assetMaintenanceLog.update({
       where: { id: req.params.id as string },
       data: {
@@ -406,6 +446,8 @@ router.get("/approval-layers", authenticate, async (_req: Request, res: Response
 // POST /api/operations/approval-layers
 router.post("/approval-layers", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateApprovalLayer(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const row = await prisma.approvalLayer.create({
       data: {
         ...req.body,
@@ -423,6 +465,8 @@ router.post("/approval-layers", authenticate, async (req: Request, res: Response
 // PUT /api/operations/approval-layers/:id
 router.put("/approval-layers/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateApprovalLayer(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const row = await prisma.approvalLayer.update({
       where: { id: req.params.id as string },
       data: {

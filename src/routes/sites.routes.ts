@@ -9,6 +9,13 @@ function toOptionalString(value: unknown) {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
+function validateSite(body: Record<string, unknown>) {
+  const area = body.area === undefined || body.area === "" ? undefined : Number(body.area);
+  if (!body.name || String(body.name).trim() === "") return "name is required";
+  if (area !== undefined && (!Number.isFinite(area) || area < 0)) return "area must be a non-negative number";
+  return null;
+}
+
 function normalizeSiteData(body: Record<string, unknown>): Prisma.ProjectSiteCreateInput {
   const { projectId, name, address, area, areaUnit, siteType, status, description } = body;
   return {
@@ -38,6 +45,8 @@ router.get("/", authenticate, async (req: Request, res: Response) => {
 
 router.post("/", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateSite(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const site = await prisma.projectSite.create({ data: normalizeSiteData(req.body) });
     res.status(201).json({ success: true, data: site });
   } catch (err: unknown) { res.status(400).json({ error: (err as Error).message }); }
@@ -45,6 +54,8 @@ router.post("/", authenticate, async (req: Request, res: Response) => {
 
 router.put("/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateSite(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const site = await prisma.projectSite.update({
       where: { id: req.params.id as string },
       data: normalizeSiteData(req.body) as Prisma.ProjectSiteUpdateInput,

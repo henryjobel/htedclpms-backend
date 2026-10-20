@@ -10,6 +10,31 @@ import {
 
 const router = Router();
 
+function validateProjectPayload(body: Record<string, unknown>, requireCoreFields = false) {
+  const requiredFields = ["name", "location", "manager", "startDate", "endDate"];
+  if (requireCoreFields) {
+    const missing = requiredFields.find((field) => !String(body[field] ?? "").trim());
+    if (missing) return `${missing} is required`;
+  }
+
+  if (body.budget !== undefined) {
+    const budget = Number(body.budget);
+    if (!Number.isFinite(budget) || budget < 0) return "Budget cannot be negative";
+  }
+  if (body.totalUnits !== undefined) {
+    const totalUnits = Number(body.totalUnits);
+    if (!Number.isInteger(totalUnits) || totalUnits < 0) return "Total units must be a non-negative whole number";
+  }
+
+  const startDate = body.startDate !== undefined ? new Date(String(body.startDate)) : undefined;
+  const endDate = body.endDate !== undefined ? new Date(String(body.endDate)) : undefined;
+  if ((startDate && Number.isNaN(startDate.getTime())) || (endDate && Number.isNaN(endDate.getTime()))) {
+    return "Project dates must be valid dates";
+  }
+  if (startDate && endDate && endDate < startDate) return "End date cannot be before start date";
+  return null;
+}
+
 // GET /api/projects/meta/phases-subcategories
 router.get("/meta/phases-subcategories", (_req: Request, res: Response) => {
   res.json({
@@ -60,6 +85,57 @@ function normalizeQuotationItems(items: Array<Record<string, unknown>> = []) {
     const unitRate = Number(item.unitRate || 0);
     return { ...item, quantity, unitRate, totalAmount: quantity * unitRate };
   });
+}
+
+function validateBOQ(body: Record<string, unknown>) {
+  const quantity = Number(body.quantity ?? 0);
+  const unitRate = Number(body.unitRate ?? 0);
+  const materialCost = Number(body.materialCost ?? 0);
+  const laborCost = Number(body.laborCost ?? 0);
+  if (!body.description || String(body.description).trim() === "") return "description is required";
+  if (!body.unit || String(body.unit).trim() === "") return "unit is required";
+  if (![quantity, unitRate, materialCost, laborCost].every((value) => Number.isFinite(value) && value >= 0)) return "BOQ amounts must be non-negative numbers";
+  return null;
+}
+
+function validateProgress(body: Record<string, unknown>) {
+  const percentage = Number(body.percentage);
+  if (!body.phase || String(body.phase).trim() === "") return "phase is required";
+  if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) return "percentage must be between 0 and 100";
+  if (body.logDate && Number.isNaN(new Date(String(body.logDate)).getTime())) return "logDate must be valid";
+  return null;
+}
+
+function validateTask(body: Record<string, unknown>) {
+  const progress = Number(body.progress ?? 0);
+  if (!body.title || String(body.title).trim() === "") return "title is required";
+  if (!body.userId) return "userId is required";
+  if (!body.dueDate || Number.isNaN(new Date(String(body.dueDate)).getTime())) return "valid dueDate is required";
+  if (!Number.isInteger(progress) || progress < 0 || progress > 100) return "progress must be between 0 and 100";
+  return null;
+}
+
+function validateQuotation(body: Record<string, unknown>) {
+  const amount = Number(body.amount ?? 0);
+  if (!Number.isFinite(amount) || amount < 0) return "amount must be a non-negative number";
+  if (body.items !== undefined && (!Array.isArray(body.items) || body.items.some((item) => {
+    const row = item as Record<string, unknown>;
+    return !row.description || Number(row.quantity) <= 0 || Number(row.unitRate) < 0;
+  }))) return "quotation items must have valid description, quantity and unit rate";
+  if (body.validUntil && Number.isNaN(new Date(String(body.validUntil)).getTime())) return "validUntil must be valid";
+  return null;
+}
+
+function validateWorkOrder(body: Record<string, unknown>) {
+  const amount = Number(body.amount ?? 0);
+  if (!body.title || String(body.title).trim() === "") return "title is required";
+  if (!body.type || String(body.type).trim() === "") return "type is required";
+  if (!Number.isFinite(amount) || amount < 0) return "amount must be a non-negative number";
+  const startDate = body.startDate ? new Date(String(body.startDate)) : undefined;
+  const endDate = body.endDate ? new Date(String(body.endDate)) : undefined;
+  if ((startDate && Number.isNaN(startDate.getTime())) || (endDate && Number.isNaN(endDate.getTime()))) return "work order dates must be valid";
+  if (startDate && endDate && endDate < startDate) return "endDate cannot be before startDate";
+  return null;
 }
 
 // GET /api/projects
@@ -147,6 +223,8 @@ router.get("/:id", authenticate, async (req: Request, res: Response) => {
 // POST /api/projects
 router.post("/", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateProjectPayload(req.body as Record<string, unknown>, true);
+    if (validationError) return res.status(400).json({ error: validationError });
     const project = await prisma.project.create({ data: req.body });
     res.status(201).json({ success: true, data: project });
   } catch (err: unknown) {
@@ -157,6 +235,8 @@ router.post("/", authenticate, async (req: Request, res: Response) => {
 // PUT /api/projects/:id
 router.put("/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateProjectPayload(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const projectId = req.params.id as string;
     const project = await prisma.project.update({ where: { id: projectId }, data: req.body });
     res.json({ success: true, data: project });
@@ -254,6 +334,8 @@ router.get("/:id/boq", authenticate, async (req: Request, res: Response) => {
 // POST /api/projects/:id/boq
 router.post("/:id/boq", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateBOQ(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const projectId = req.params.id as string;
     const item = await prisma.bOQItem.create({
       data: { ...normalizeBOQData(req.body), projectId } as Prisma.BOQItemUncheckedCreateInput,
@@ -295,6 +377,8 @@ router.get("/:id/progress", authenticate, async (req: Request, res: Response) =>
 // POST /api/projects/:id/progress
 router.post("/:id/progress", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateProgress(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const projectId = req.params.id as string;
     const log = await prisma.progressLog.create({ data: { ...req.body, projectId } });
     res.status(201).json({ success: true, data: log });
@@ -306,6 +390,8 @@ router.post("/:id/progress", authenticate, async (req: Request, res: Response) =
 // PUT /api/projects/boq/:itemId
 router.put("/boq/:itemId", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateBOQ(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const itemId = req.params.itemId as string;
     const existing = await prisma.bOQItem.findUnique({ where: { id: itemId } });
     if (!existing) return res.status(404).json({ error: "BOQ item not found" });
@@ -342,6 +428,8 @@ router.delete("/boq/:itemId", authenticate, async (req: Request, res: Response) 
 // POST /api/projects/:id/tasks
 router.post("/:id/tasks", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateTask(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const projectId = req.params.id as string;
     const task = await prisma.task.create({ data: { ...req.body, projectId } });
     res.status(201).json({ success: true, data: task });
@@ -353,6 +441,8 @@ router.post("/:id/tasks", authenticate, async (req: Request, res: Response) => {
 // PATCH /api/projects/:id/tasks/:taskId
 router.patch("/:id/tasks/:taskId", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateTask(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const taskId = req.params.taskId as string;
     const task = await prisma.task.update({ where: { id: taskId }, data: req.body });
     res.json({ success: true, data: task });
@@ -413,6 +503,8 @@ router.get("/quotations/all", authenticate, async (_req: Request, res: Response)
 // POST /api/projects/quotations
 router.post("/quotations", authenticate, async (_req: Request, res: Response) => {
   try {
+    const validationError = validateQuotation(_req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const quotationNo = `QT-${Date.now()}`;
     const { items, ...rest } = _req.body;
     const quotation = await prisma.quotation.create({
@@ -444,6 +536,8 @@ router.get("/work-orders/all", authenticate, async (_req: Request, res: Response
 // POST /api/projects/work-orders
 router.post("/work-orders", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateWorkOrder(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const workOrderNo = `WO-${Date.now()}`;
     const workOrder = await prisma.workOrder.create({
       data: {
@@ -463,6 +557,8 @@ router.post("/work-orders", authenticate, async (req: Request, res: Response) =>
 // PUT /api/projects/work-orders/:id
 router.put("/work-orders/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateWorkOrder(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const workOrder = await prisma.workOrder.update({
       where: { id: req.params.id as string },
       data: {

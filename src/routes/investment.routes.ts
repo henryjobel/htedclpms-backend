@@ -4,6 +4,15 @@ import { authenticate } from "../middleware/auth";
 
 const router = Router();
 
+function validateInvestment(body: Record<string, unknown>) {
+  const amount = Number(body.amount ?? 0);
+  const percentage = Number(body.percentage ?? 0);
+  if (!body.investorId || !body.projectId) return "investorId and projectId are required";
+  if (!Number.isFinite(amount) || amount < 0) return "amount must be a non-negative number";
+  if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) return "percentage must be between 0 and 100";
+  return null;
+}
+
 // ── Investors ────────────────────────────────────────────────────────
 router.get("/investors", authenticate, async (_req: Request, res: Response) => {
   try {
@@ -57,6 +66,8 @@ router.get("/investments", authenticate, async (_req: Request, res: Response) =>
 
 router.post("/investments", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateInvestment(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const investment = await prisma.projectInvestment.create({ data: req.body });
     res.status(201).json({ success: true, data: investment });
   } catch (err: unknown) { res.status(400).json({ error: (err as Error).message }); }
@@ -64,6 +75,8 @@ router.post("/investments", authenticate, async (req: Request, res: Response) =>
 
 router.put("/investments/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateInvestment(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const investment = await prisma.projectInvestment.update({ where: { id: req.params.id as string }, data: req.body });
     res.json({ success: true, data: investment });
   } catch { res.status(500).json({ error: "Server error" }); }

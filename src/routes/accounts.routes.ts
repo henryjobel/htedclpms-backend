@@ -270,8 +270,16 @@ router.post("/vouchers", authenticate, async (req: AuthRequest, res: Response) =
       boqItemId,
       boqCostType,
     } = req.body;
+    const allowedVoucherTypes = ["RECEIPT", "PAYMENT", "CONTRA", "JOURNAL", "ADJUSTMENT"];
     const voucherNo = await generateVoucherNo(type);
     const voucherAmount = Number(amount || 0);
+
+    if (!allowedVoucherTypes.includes(String(type))) {
+      throw new Error("Invalid voucher type");
+    }
+    if (!Number.isFinite(voucherAmount) || voucherAmount <= 0) {
+      throw new Error("Voucher amount must be greater than zero");
+    }
 
     if (boqItemId && ["RECEIPT", "CONTRA"].includes(type)) {
       throw new Error("Only construction expense vouchers can be linked to a BOQ item");

@@ -4,6 +4,27 @@ import { authenticate, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
+function validateProduct(body: Record<string, unknown>) {
+  const stock = Number(body.stock ?? 0);
+  const minStock = Number(body.minStock ?? 0);
+  const purchasePrice = Number(body.purchasePrice ?? 0);
+  if (!body.name || String(body.name).trim() === "") return "name is required";
+  if (!body.category || String(body.category).trim() === "") return "category is required";
+  if (!body.unit || String(body.unit).trim() === "") return "unit is required";
+  if (![stock, minStock, purchasePrice].every((value) => Number.isFinite(value) && value >= 0)) return "stock values must be non-negative numbers";
+  return null;
+}
+
+function validateRFQ(body: Record<string, unknown>) {
+  const quotedAmount = body.quotedAmount === undefined || body.quotedAmount === "" ? undefined : Number(body.quotedAmount);
+  const deliveryDays = body.deliveryDays === undefined || body.deliveryDays === "" ? undefined : Number(body.deliveryDays);
+  if (!body.supplierId) return "supplierId is required";
+  if (quotedAmount !== undefined && (!Number.isFinite(quotedAmount) || quotedAmount < 0)) return "quotedAmount must be non-negative";
+  if (deliveryDays !== undefined && (!Number.isInteger(deliveryDays) || deliveryDays < 0)) return "deliveryDays must be a non-negative whole number";
+  if (body.deadline && Number.isNaN(new Date(String(body.deadline)).getTime())) return "deadline must be valid";
+  return null;
+}
+
 async function getEligibleApprovalRoles(module: string, amount: number) {
   const layers = await prisma.approvalLayer.findMany({
     where: { module, isActive: true },
@@ -58,6 +79,8 @@ router.get("/products", authenticate, async (req: Request, res: Response) => {
 // POST /api/inventory/products
 router.post("/products", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateProduct(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const product = await prisma.product.create({ data: req.body });
     res.status(201).json({ success: true, data: product });
   } catch (err: unknown) {
@@ -68,6 +91,8 @@ router.post("/products", authenticate, async (req: Request, res: Response) => {
 // PUT /api/inventory/products/:id
 router.put("/products/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateProduct(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const productId = req.params.id as string;
     const product = await prisma.product.update({ where: { id: productId }, data: req.body });
     res.json({ success: true, data: product });
@@ -82,7 +107,8 @@ router.post("/products/:id/adjustment", authenticate, async (req: Request, res: 
     const { type, quantity, reason, adjustedBy } = req.body;
     const productId = req.params.id as string;
     const adjustmentQty = Number(quantity || 0);
-    if (adjustmentQty <= 0) return res.status(400).json({ error: "Quantity must be greater than zero" });
+    if (!['add', 'subtract'].includes(String(type))) return res.status(400).json({ error: "Adjustment type must be add or subtract" });
+    if (!Number.isFinite(adjustmentQty) || adjustmentQty <= 0) return res.status(400).json({ error: "Quantity must be greater than zero" });
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) return res.status(404).json({ error: "Product not found" });
@@ -159,11 +185,24 @@ router.get("/requisitions", authenticate, async (req: Request, res: Response) =>
 router.post("/requisitions", authenticate, async (req: Request, res: Response) => {
   try {
     const { projectId, requestedBy, requiredDate, priority, remarks, items } = req.body;
+    if (!projectId || !String(requestedBy ?? "").trim() || !requiredDate || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "Project, requester, required date and at least one item are required" });
+    }
+    const parsedDate = new Date(requiredDate);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ error: "Required date must be a valid date" });
+    }
+    const invalidItem = items.find((item: { productId?: string; quantity?: number; unit?: string }) => (
+      !item.productId || !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || !String(item.unit ?? "").trim()
+    ));
+    if (invalidItem) {
+      return res.status(400).json({ error: "Each requisition item needs a product, unit and quantity greater than zero" });
+    }
     const requisition = await prisma.materialRequisition.create({
       data: {
         projectId,
         requestedBy,
-        requiredDate: new Date(requiredDate),
+        requiredDate: parsedDate,
         priority,
         remarks,
         items: { create: items },
@@ -249,6 +288,8 @@ router.get("/rfqs", authenticate, async (_req: Request, res: Response) => {
 // POST /api/inventory/rfqs
 router.post("/rfqs", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateRFQ(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const rfq = await prisma.rFQ.create({ data: req.body });
     res.status(201).json({ success: true, data: rfq });
   } catch {
@@ -259,6 +300,8 @@ router.post("/rfqs", authenticate, async (req: Request, res: Response) => {
 // PUT /api/inventory/rfqs/:id
 router.put("/rfqs/:id", authenticate, async (req: Request, res: Response) => {
   try {
+    const validationError = validateRFQ(req.body as Record<string, unknown>);
+    if (validationError) return res.status(400).json({ error: validationError });
     const rfq = await prisma.rFQ.update({
       where: { id: req.params.id as string },
       data: {
